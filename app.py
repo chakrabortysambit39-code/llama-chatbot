@@ -4,7 +4,6 @@ import os
 
 app = Flask(__name__)
 
-# Get API key securely from environment variable
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 @app.route("/")
@@ -13,28 +12,95 @@ def home():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Llama 3 Chatbot</title>
+        <title>Sambit Chatbot</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body { font-family: Arial; background:#f2f2f2; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
-            .chat { background:white; width:100%; max-width:400px; height:520px; display:flex; flex-direction:column; border-radius:10px; overflow:hidden; }
-            .header { background:black; color:white; padding:10px; text-align:center; }
-            .messages { flex:1; padding:10px; overflow-y:auto; }
-            .user { text-align:right; color:blue; margin:5px 0; }
-            .bot { text-align:left; color:green; margin:5px 0; }
-            .input { display:flex; border-top:1px solid #ddd; }
-            input { flex:1; padding:10px; border:none; outline:none; }
-            button { padding:10px; border:none; background:black; color:white; }
+            * { box-sizing: border-box; }
+
+            body {
+                margin: 0;
+                font-family: Arial, sans-serif;
+                background: #0f172a;
+                color: white;
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+            }
+
+            .header {
+                padding: 15px;
+                background: #111827;
+                text-align: center;
+                font-size: 20px;
+                font-weight: bold;
+            }
+
+            .messages {
+                flex: 1;
+                padding: 20px;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .user {
+                align-self: flex-end;
+                background: #2563eb;
+                padding: 10px 14px;
+                border-radius: 12px;
+                margin: 6px 0;
+                max-width: 70%;
+            }
+
+            .bot {
+                align-self: flex-start;
+                background: #1f2937;
+                padding: 10px 14px;
+                border-radius: 12px;
+                margin: 6px 0;
+                max-width: 70%;
+            }
+
+            .input-area {
+                display: flex;
+                padding: 10px;
+                background: #111827;
+            }
+
+            input {
+                flex: 1;
+                padding: 12px;
+                border-radius: 8px;
+                border: none;
+                outline: none;
+                font-size: 16px;
+            }
+
+            button {
+                margin-left: 10px;
+                padding: 12px 20px;
+                border-radius: 8px;
+                border: none;
+                background: #2563eb;
+                color: white;
+                font-size: 16px;
+                cursor: pointer;
+            }
+
+            button:hover {
+                background: #1d4ed8;
+            }
         </style>
     </head>
     <body>
-        <div class="chat">
-            <div class="header">Llama 3 Chatbot</div>
-            <div class="messages" id="messages"></div>
-            <div class="input">
-                <input id="input" placeholder="Ask something..." />
-                <button onclick="sendMessage()">Send</button>
-            </div>
+
+        <div class="header">Sambit Chatbot</div>
+
+        <div class="messages" id="messages"></div>
+
+        <div class="input-area">
+            <input id="input" placeholder="Ask me anything..." />
+            <button onclick="sendMessage()">Send</button>
         </div>
 
         <script>
@@ -44,6 +110,7 @@ def home():
                 if (!message) return;
 
                 const messages = document.getElementById("messages");
+
                 messages.innerHTML += `<div class="user">${message}</div>`;
                 input.value = "";
                 messages.scrollTop = messages.scrollHeight;
@@ -57,6 +124,9 @@ def home():
                 .then(data => {
                     messages.innerHTML += `<div class="bot">${data.reply}</div>`;
                     messages.scrollTop = messages.scrollHeight;
+                })
+                .catch(() => {
+                    messages.innerHTML += `<div class="bot">Server connection error.</div>`;
                 });
             }
 
@@ -66,6 +136,7 @@ def home():
                 }
             });
         </script>
+
     </body>
     </html>
     """
@@ -75,7 +146,7 @@ def chat():
     user_msg = request.json.get("message", "")
 
     if not GROQ_API_KEY:
-        return jsonify({"reply": "Server error: API key not configured."})
+        return jsonify({"reply": "API key not configured on server."})
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -85,22 +156,28 @@ def chat():
     payload = {
         "model": "llama3-8b-8192",
         "messages": [
+            {"role": "system", "content": "You are a helpful AI assistant."},
             {"role": "user", "content": user_msg}
         ]
     }
 
-    response = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers=headers,
-        json=payload
-    )
-
-    data = response.json()
-
     try:
-        reply = data["choices"][0]["message"]["content"]
-    except:
-        reply = "Error getting response from AI."
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+
+        data = response.json()
+
+        if "choices" in data:
+            reply = data["choices"][0]["message"]["content"]
+        else:
+            reply = f"API Error: {data}"
+
+    except Exception as e:
+        reply = f"Server Error: {str(e)}"
 
     return jsonify({"reply": reply})
 
