@@ -6,140 +6,218 @@ app = Flask(__name__)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
+
 @app.route("/")
 def home():
     return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Sambit Chatbot</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            * { box-sizing: border-box; }
+<!DOCTYPE html>
+<html>
+<head>
+<title>Sambit Chatbot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-            body {
-                margin: 0;
-                font-family: Arial, sans-serif;
-                background: #0f172a;
-                color: white;
-                display: flex;
-                flex-direction: column;
-                height: 100vh;
-            }
+<style>
+* { box-sizing: border-box; }
 
-            .header {
-                padding: 15px;
-                background: #111827;
-                text-align: center;
-                font-size: 20px;
-                font-weight: bold;
-            }
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
 
-            .messages {
-                flex: 1;
-                padding: 20px;
-                overflow-y: auto;
-                display: flex;
-                flex-direction: column;
-            }
+.header {
+    padding: 15px;
+    background: #111827;
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+}
 
-            .user {
-                align-self: flex-end;
-                background: #2563eb;
-                padding: 10px 14px;
-                border-radius: 12px;
-                margin: 6px 0;
-                max-width: 70%;
-            }
+.messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
 
-            .bot {
-                align-self: flex-start;
-                background: #1f2937;
-                padding: 10px 14px;
-                border-radius: 12px;
-                margin: 6px 0;
-                max-width: 70%;
-            }
+.user {
+    align-self: flex-end;
+    background: #2563eb;
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin: 6px 0;
+    max-width: 70%;
+}
 
-            .input-area {
-                display: flex;
-                padding: 10px;
-                background: #111827;
-            }
+.bot {
+    align-self: flex-start;
+    background: #1f2937;
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin: 6px 0;
+    max-width: 70%;
+}
 
-            input {
-                flex: 1;
-                padding: 12px;
-                border-radius: 8px;
-                border: none;
-                outline: none;
-                font-size: 16px;
-            }
+.input-area {
+    display: flex;
+    padding: 10px;
+    background: #111827;
+    align-items: center;
+}
 
-            button {
-                margin-left: 10px;
-                padding: 12px 20px;
-                border-radius: 8px;
-                border: none;
-                background: #2563eb;
-                color: white;
-                font-size: 16px;
-                cursor: pointer;
-            }
+input {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    outline: none;
+    font-size: 16px;
+}
 
-            button:hover {
-                background: #1d4ed8;
-            }
-        </style>
-    </head>
-    <body>
+button {
+    margin-left: 8px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: none;
+    background: #2563eb;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+}
 
-        <div class="header">Sambit Chatbot</div>
+button:hover {
+    background: #1d4ed8;
+}
 
-        <div class="messages" id="messages"></div>
+.voice-btn {
+    background: #10b981;
+}
 
-        <div class="input-area">
-            <input id="input" placeholder="Ask me anything..." />
-            <button onclick="sendMessage()">Send</button>
-        </div>
+.cancel-btn {
+    background: #ef4444;
+}
 
-        <script>
-            function sendMessage() {
-                const input = document.getElementById("input");
-                const message = input.value.trim();
-                if (!message) return;
+.ok-btn {
+    background: #22c55e;
+}
+</style>
+</head>
 
-                const messages = document.getElementById("messages");
+<body>
 
-                messages.innerHTML += `<div class="user">${message}</div>`;
-                input.value = "";
-                messages.scrollTop = messages.scrollHeight;
+<div class="header">Sambit Chatbot</div>
 
-                fetch("/chat", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({message: message})
-                })
-                .then(res => res.json())
-                .then(data => {
-                    messages.innerHTML += `<div class="bot">${data.reply}</div>`;
-                    messages.scrollTop = messages.scrollHeight;
-                })
-                .catch(() => {
-                    messages.innerHTML += `<div class="bot">Server connection error.</div>`;
-                });
-            }
+<div class="messages" id="messages"></div>
 
-            document.getElementById("input").addEventListener("keydown", function(e) {
-                if (e.key === "Enter") {
-                    sendMessage();
-                }
-            });
-        </script>
+<div class="input-area">
+<input id="input" placeholder="Ask me anything..." />
 
-    </body>
-    </html>
-    """
+<button id="voiceBtn" class="voice-btn">🎤</button>
+<button id="cancelBtn" class="cancel-btn" style="display:none;">❌</button>
+<button id="okBtn" class="ok-btn" style="display:none;">✔</button>
+
+<button onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+
+let recognition;
+let transcript = "";
+
+if ('webkitSpeechRecognition' in window) {
+    recognition = new webkitSpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = function(event) {
+        transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            transcript += event.results[i][0].transcript;
+        }
+    };
+}
+
+const voiceBtn = document.getElementById("voiceBtn");
+const cancelBtn = document.getElementById("cancelBtn");
+const okBtn = document.getElementById("okBtn");
+const input = document.getElementById("input");
+
+voiceBtn.onclick = () => {
+
+    if(!recognition){
+        alert("Voice recognition not supported in this browser");
+        return;
+    }
+
+    transcript = "";
+    recognition.start();
+
+    voiceBtn.style.display = "none";
+    cancelBtn.style.display = "inline-block";
+    okBtn.style.display = "inline-block";
+};
+
+cancelBtn.onclick = () => {
+    recognition.stop();
+    transcript = "";
+
+    voiceBtn.style.display = "inline-block";
+    cancelBtn.style.display = "none";
+    okBtn.style.display = "none";
+};
+
+okBtn.onclick = () => {
+    recognition.stop();
+    input.value = transcript;
+
+    voiceBtn.style.display = "inline-block";
+    cancelBtn.style.display = "none";
+    okBtn.style.display = "none";
+};
+
+function sendMessage() {
+
+    const message = input.value.trim();
+    if (!message) return;
+
+    const messages = document.getElementById("messages");
+
+    messages.innerHTML += `<div class="user">${message}</div>`;
+    input.value = "";
+    messages.scrollTop = messages.scrollHeight;
+
+    fetch("/chat", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message: message})
+    })
+    .then(res => res.json())
+    .then(data => {
+        messages.innerHTML += `<div class="bot">${data.reply}</div>`;
+        messages.scrollTop = messages.scrollHeight;
+    })
+    .catch(() => {
+        messages.innerHTML += `<div class="bot">Server connection error.</div>`;
+    });
+}
+
+input.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+        sendMessage();
+    }
+});
+
+</script>
+
+</body>
+</html>
+"""
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
