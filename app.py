@@ -1,12 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 import requests
 import os
 
 app = Flask(__name__)
+app.secret_key = "sambit-secret"
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
 
 @app.route("/")
 def home():
@@ -14,7 +13,7 @@ def home():
 <!DOCTYPE html>
 <html>
 <head>
-<title>Sambit Chatbot</title>
+<title>Sambit AI Assistant</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -85,7 +84,6 @@ border:none;
 border-radius:8px;
 background:#2563eb;
 color:white;
-font-size:16px;
 cursor:pointer;
 }
 
@@ -93,15 +91,11 @@ button:hover{
 background:#1d4ed8;
 }
 
-.voice-btn{background:#10b981;}
-.accept-btn{background:#22c55e;}
-.cancel-btn{background:#ef4444;}
-
 .voice-wave{
 display:none;
 justify-content:center;
 gap:4px;
-height:40px;
+height:30px;
 }
 
 .voice-wave span{
@@ -121,7 +115,7 @@ animation:wave 1s infinite;
 
 <body>
 
-<div class="header">Sambit Chatbot</div>
+<div class="header">Sambit AI Assistant</div>
 
 <div class="messages" id="messages"></div>
 
@@ -131,15 +125,15 @@ animation:wave 1s infinite;
 
 <div class="input-area">
 
-<input id="input" placeholder="Ask me anything...">
+<input id="input" placeholder="Ask anything...">
 
 <button onclick="openCamera()">📷</button>
 
-<button id="micBtn" class="voice-btn">🎤</button>
+<button id="micBtn">🎤</button>
 
-<button id="acceptBtn" class="accept-btn" style="display:none;">✔</button>
+<button id="acceptBtn" style="display:none;">✔</button>
 
-<button id="cancelBtn" class="cancel-btn" style="display:none;">❌</button>
+<button id="cancelBtn" style="display:none;">❌</button>
 
 <button onclick="sendMessage()">Send</button>
 
@@ -161,6 +155,7 @@ const input=document.getElementById("input");
 if ('webkitSpeechRecognition' in window){
 
 recognition=new webkitSpeechRecognition();
+
 recognition.continuous=true;
 recognition.interimResults=true;
 
@@ -169,7 +164,9 @@ recognition.onresult=function(event){
 transcript="";
 
 for(let i=event.resultIndex;i<event.results.length;i++){
+
 transcript+=event.results[i][0].transcript;
+
 }
 
 };
@@ -251,13 +248,9 @@ fetch("/analyze",{
 
 method:"POST",
 
-headers:{
-"Content-Type":"application/json"
-},
+headers:{"Content-Type":"application/json"},
 
-body:JSON.stringify({
-image:imageData
-})
+body:JSON.stringify({image:imageData})
 
 })
 
@@ -265,13 +258,19 @@ image:imageData
 
 .then(data=>{
 
+addMessage("bot",data.reply)
+
+})
+
+}
+
+function addMessage(type,text){
+
 const messages=document.getElementById("messages");
 
-messages.innerHTML+=`<div class="bot">${data.reply}</div>`;
+messages.innerHTML+=`<div class="${type}">${text}</div>`;
 
 messages.scrollTop=messages.scrollHeight;
-
-});
 
 }
 
@@ -281,33 +280,35 @@ let message=input.value.trim();
 
 if(!message) return;
 
-const messages=document.getElementById("messages");
-
-messages.innerHTML+=`<div class="user">${message}</div>`;
+addMessage("user",message)
 
 input.value="";
 
 fetch("/chat",{
+
 method:"POST",
+
 headers:{"Content-Type":"application/json"},
+
 body:JSON.stringify({message:message})
+
 })
 
 .then(res=>res.json())
 
 .then(data=>{
 
-messages.innerHTML+=`<div class="bot">${data.reply}</div>`;
+addMessage("bot",data.reply)
 
-messages.scrollTop=messages.scrollHeight;
-
-});
+})
 
 }
 
 input.addEventListener("keydown",function(e){
+
 if(e.key==="Enter") sendMessage();
-});
+
+})
 
 </script>
 
@@ -315,23 +316,23 @@ if(e.key==="Enter") sendMessage();
 </html>
 """
 
-
 @app.route("/chat", methods=["POST"])
 def chat():
 
     user_msg=request.json.get("message","")
 
-    headers={
-        "Authorization":f"Bearer {GROQ_API_KEY}",
-        "Content-Type":"application/json"
-    }
+    history=session.get("history",[])
+
+    history.append({"role":"user","content":user_msg})
 
     payload={
         "model":"llama-3.1-8b-instant",
-        "messages":[
-            {"role":"system","content":"You are a helpful AI assistant."},
-            {"role":"user","content":user_msg}
-        ]
+        "messages":history
+    }
+
+    headers={
+        "Authorization":f"Bearer {GROQ_API_KEY}",
+        "Content-Type":"application/json"
     }
 
     response=requests.post(
@@ -344,42 +345,17 @@ def chat():
 
     reply=data["choices"][0]["message"]["content"]
 
+    history.append({"role":"assistant","content":reply})
+
+    session["history"]=history[-10:]
+
     return jsonify({"reply":reply})
 
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
 
-    data=request.json
-    image_data=data.get("image")
-
-    image_base64=image_data.split(",")[1]
-
-    payload={
-        "contents":[{
-            "parts":[
-                {"text":"Describe this image"},
-                {
-                    "inline_data":{
-                        "mime_type":"image/jpeg",
-                        "data":image_base64
-                    }
-                }
-            ]
-        }]
-    }
-
-    response=requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={GEMINI_API_KEY}",
-        headers={"Content-Type":"application/json"},
-        json=payload
-    )
-
-    result=response.json()
-
-    reply=result["candidates"][0]["content"]["parts"][0]["text"]
-
-    return jsonify({"reply":reply})
+    return jsonify({"reply":"Image received. Vision AI can be connected here."})
 
 
 if __name__=="__main__":
