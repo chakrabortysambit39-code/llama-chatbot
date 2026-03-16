@@ -7,6 +7,7 @@ app.secret_key = "sambit-secret"
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
+
 @app.route("/")
 def home():
     return """
@@ -137,6 +138,8 @@ animation:wave 1s infinite;
 
 <button onclick="sendMessage()">Send</button>
 
+<button onclick="toggleVoice()">🔊</button>
+
 <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
 
 </div>
@@ -145,12 +148,33 @@ animation:wave 1s infinite;
 
 let recognition;
 let transcript="";
+let voiceEnabled=true;
 
 const micBtn=document.getElementById("micBtn");
 const acceptBtn=document.getElementById("acceptBtn");
 const cancelBtn=document.getElementById("cancelBtn");
 const voiceWave=document.getElementById("voiceWave");
 const input=document.getElementById("input");
+
+function speak(text){
+
+if(!voiceEnabled) return;
+
+const speech=new SpeechSynthesisUtterance(text);
+
+speech.lang="en-US";
+speech.rate=1;
+speech.pitch=1;
+
+speechSynthesis.speak(speech);
+
+}
+
+function toggleVoice(){
+
+voiceEnabled=!voiceEnabled;
+
+}
 
 if ('webkitSpeechRecognition' in window){
 
@@ -230,39 +254,9 @@ let file=this.files[0];
 
 if(!file) return;
 
-let reader=new FileReader();
-
-reader.onload=function(){
-
-sendImage(reader.result);
-
-};
-
-reader.readAsDataURL(file);
+addMessage("bot","Image received.");
 
 });
-
-function sendImage(imageData){
-
-fetch("/analyze",{
-
-method:"POST",
-
-headers:{"Content-Type":"application/json"},
-
-body:JSON.stringify({image:imageData})
-
-})
-
-.then(res=>res.json())
-
-.then(data=>{
-
-addMessage("bot",data.reply)
-
-})
-
-}
 
 function addMessage(type,text){
 
@@ -280,16 +274,14 @@ let message=input.value.trim();
 
 if(!message) return;
 
-addMessage("user",message)
+addMessage("user",message);
 
 input.value="";
 
 fetch("/chat",{
 
 method:"POST",
-
 headers:{"Content-Type":"application/json"},
-
 body:JSON.stringify({message:message})
 
 })
@@ -298,7 +290,9 @@ body:JSON.stringify({message:message})
 
 .then(data=>{
 
-addMessage("bot",data.reply)
+addMessage("bot",data.reply);
+
+speak(data.reply);
 
 })
 
@@ -350,12 +344,6 @@ def chat():
     session["history"]=history[-10:]
 
     return jsonify({"reply":reply})
-
-
-@app.route("/analyze", methods=["POST"])
-def analyze():
-
-    return jsonify({"reply":"Image received. Vision AI can be connected here."})
 
 
 if __name__=="__main__":
