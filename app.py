@@ -95,13 +95,11 @@ background:#1d4ed8;
 background:#10b981;
 }
 
-/* voice wave animation */
-
 #wave{
 display:none;
 text-align:center;
-font-size:28px;
-margin-top:5px;
+font-size:22px;
+padding:5px;
 animation:pulse 1s infinite;
 }
 
@@ -135,49 +133,39 @@ animation:pulse 1s infinite;
 <script>
 
 let recognition;
-let listening=false;
 
 async function requestMic(){
 
 try{
 await navigator.mediaDevices.getUserMedia({audio:true});
-}
-catch(e){
-alert("Microphone permission denied");
+}catch(e){
+console.log("Mic permission denied");
 }
 
 }
 
 requestMic();
 
-if('webkitSpeechRecognition' in window){
+if ('webkitSpeechRecognition' in window){
 
 recognition = new webkitSpeechRecognition();
 
-recognition.continuous=false;
-recognition.interimResults=false;
+recognition.continuous = false;
+recognition.interimResults = false;
 
-recognition.onstart=function(){
-
-listening=true;
-
+recognition.onstart = function(){
 document.getElementById("wave").style.display="block";
-
 };
 
-recognition.onend=function(){
-
-listening=false;
-
+recognition.onend = function(){
 document.getElementById("wave").style.display="none";
-
 };
 
-recognition.onresult=function(event){
+recognition.onresult = function(event){
 
-let text=event.results[0][0].transcript;
+let text = event.results[0][0].transcript;
 
-document.getElementById("input").value=text;
+document.getElementById("input").value = text;
 
 };
 
@@ -186,11 +174,8 @@ document.getElementById("input").value=text;
 function startVoice(){
 
 if(!recognition){
-
 alert("Voice not supported in this browser");
-
 return;
-
 }
 
 recognition.start();
@@ -218,9 +203,7 @@ method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({message:message})
 })
-
 .then(res=>res.json())
-
 .then(data=>{
 
 messages.innerHTML += `<div class="bot">${data.reply}</div>`;
@@ -228,11 +211,8 @@ messages.innerHTML += `<div class="bot">${data.reply}</div>`;
 messages.scrollTop=messages.scrollHeight;
 
 })
-
 .catch(()=>{
-
 messages.innerHTML += `<div class="bot">Server error</div>`;
-
 });
 
 }
@@ -240,9 +220,7 @@ messages.innerHTML += `<div class="bot">Server error</div>`;
 document.getElementById("input").addEventListener("keydown",function(e){
 
 if(e.key==="Enter"){
-
 sendMessage();
-
 }
 
 });
@@ -259,6 +237,9 @@ def chat():
 
     user_msg = request.json.get("message", "")
 
+    if not GROQ_API_KEY:
+        return jsonify({"reply": "API key not configured on server."})
+
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
@@ -267,22 +248,31 @@ def chat():
     payload = {
         "model": "llama-3.1-8b-instant",
         "messages": [
-            {"role":"system","content":"You are a helpful AI assistant."},
-            {"role":"user","content":user_msg}
+            {"role": "system", "content": "You are a helpful AI assistant."},
+            {"role": "user", "content": user_msg}
         ]
     }
 
-    response = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers=headers,
-        json=payload
-    )
+    try:
 
-    data = response.json()
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
 
-    reply = data["choices"][0]["message"]["content"]
+        data = response.json()
 
-    return jsonify({"reply":reply})
+        if "choices" in data:
+            reply = data["choices"][0]["message"]["content"]
+        else:
+            reply = str(data)
+
+    except Exception as e:
+        reply = "Server error: " + str(e)
+
+    return jsonify({"reply": reply})
 
 
 if __name__ == "__main__":
