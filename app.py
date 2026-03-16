@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
 import os
-import base64
 
 app = Flask(__name__)
 
@@ -49,6 +48,7 @@ cursor:pointer;
 }
 
 </style>
+
 </head>
 
 <body>
@@ -61,77 +61,42 @@ cursor:pointer;
 
 <button onclick="sendMessage()">Send</button>
 
-<button onclick="startVoice()">🎤 Voice</button>
-
-<br><br>
-
-<input type="file" id="imageUpload">
-
-<button onclick="sendImage()">📷 Analyze Image</button>
-
 <script>
 
 async function sendMessage(){
 
-let message=document.getElementById("message").value
+let message = document.getElementById("message").value;
 
-let response=await fetch("/chat",{
+if(message.trim() === ""){
+alert("Type something first!");
+return;
+}
+
+let chatbox = document.getElementById("chatbox");
+
+chatbox.innerHTML += "<p><b>You:</b> " + message + "</p>";
+
+document.getElementById("message").value="";
+
+try{
+
+let response = await fetch("/chat",{
 method:"POST",
 headers:{
 "Content-Type":"application/json"
 },
 body:JSON.stringify({message:message})
-})
+});
 
-let data=await response.json()
+let data = await response.json();
 
-let chatbox=document.getElementById("chatbox")
+chatbox.innerHTML += "<p><b>AI:</b> " + data.reply + "</p>";
 
-chatbox.innerHTML += "<p><b>You:</b> "+message+"</p>"
-chatbox.innerHTML += "<p><b>AI:</b> "+data.reply+"</p>"
+}catch(error){
 
-document.getElementById("message").value=""
-
-}
-
-function startVoice(){
-
-let recognition = new webkitSpeechRecognition()
-
-recognition.onresult=function(event){
-
-let text=event.results[0][0].transcript
-
-document.getElementById("message").value=text
-
-sendMessage()
+chatbox.innerHTML += "<p><b>Error:</b> AI not responding</p>";
 
 }
-
-recognition.start()
-
-}
-
-async function sendImage(){
-
-let fileInput=document.getElementById("imageUpload")
-
-let file=fileInput.files[0]
-
-let formData=new FormData()
-
-formData.append("image",file)
-
-let response=await fetch("/analyze-image",{
-method:"POST",
-body:formData
-})
-
-let data=await response.json()
-
-let chatbox=document.getElementById("chatbox")
-
-chatbox.innerHTML += "<p><b>Image Analysis:</b> "+data.result+"</p>"
 
 }
 
@@ -150,7 +115,7 @@ def home():
 @app.route("/chat", methods=["POST"])
 def chat():
 
-    user_message = request.json["message"]
+    user_message = request.json.get("message")
 
     url = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -169,19 +134,11 @@ def chat():
 
     response = requests.post(url, headers=headers, json=data)
 
-    reply = response.json()["choices"][0]["message"]["content"]
+    result = response.json()
+
+    reply = result["choices"][0]["message"]["content"]
 
     return jsonify({"reply": reply})
-
-
-@app.route("/analyze-image", methods=["POST"])
-def analyze_image():
-
-    image = request.files["image"]
-    image_bytes = image.read()
-
-    # For now just confirming upload
-    return jsonify({"result": "Image received. Image analysis feature coming soon."})
 
 
 if __name__ == "__main__":
