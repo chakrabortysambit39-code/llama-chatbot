@@ -1,136 +1,51 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import base64
 
 app = Flask(__name__)
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-
-@app.route("/")
-def home():
-    return """
+HTML_PAGE = """
 <!DOCTYPE html>
 <html>
 <head>
 <title>Sambit Chatbot</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 
 body{
-margin:0;
 font-family:Arial;
 background:#0f172a;
 color:white;
-display:flex;
-flex-direction:column;
-height:100vh;
-}
-
-.header{
-background:#111827;
-padding:15px;
 text-align:center;
-font-size:20px;
-font-weight:bold;
-}
-
-.messages{
-flex:1;
-overflow-y:auto;
 padding:20px;
-display:flex;
-flex-direction:column;
 }
 
-.user{
-align-self:flex-end;
-background:#2563eb;
+#chatbox{
+height:400px;
+overflow:auto;
+border:1px solid #334155;
 padding:10px;
-border-radius:10px;
-margin:5px;
-max-width:70%;
-}
-
-.bot{
-align-self:flex-start;
-background:#1f2937;
-padding:10px;
-border-radius:10px;
-margin:5px;
-max-width:70%;
-}
-
-.input-area{
-display:flex;
-padding:10px;
-background:#111827;
-align-items:center;
+background:#020617;
+margin-bottom:10px;
 }
 
 input{
-flex:1;
-padding:12px;
+width:60%;
+padding:10px;
+border-radius:5px;
 border:none;
-border-radius:8px;
-font-size:16px;
 }
 
 button{
-margin-left:6px;
-padding:10px;
+padding:10px 15px;
+margin:5px;
 border:none;
-border-radius:8px;
-background:#2563eb;
-color:white;
-font-size:16px;
+border-radius:5px;
+background:#38bdf8;
 cursor:pointer;
-}
-
-button:hover{
-background:#1d4ed8;
-}
-
-.voice-btn{
-background:#10b981;
-}
-
-.accept-btn{
-background:#22c55e;
-}
-
-.cancel-btn{
-background:#ef4444;
-}
-
-/* Voice bars */
-
-.voice-wave{
-display:none;
-justify-content:center;
-align-items:center;
-gap:4px;
-height:40px;
-margin-top:5px;
-}
-
-.voice-wave span{
-width:6px;
-height:20px;
-background:#22c55e;
-border-radius:3px;
-animation:wave 1s infinite ease-in-out;
-}
-
-.voice-wave span:nth-child(2){animation-delay:0.1s;}
-.voice-wave span:nth-child(3){animation-delay:0.2s;}
-.voice-wave span:nth-child(4){animation-delay:0.3s;}
-.voice-wave span:nth-child(5){animation-delay:0.4s;}
-
-@keyframes wave{
-0%,100%{height:10px;}
-50%{height:30px;}
 }
 
 </style>
@@ -138,166 +53,87 @@ animation:wave 1s infinite ease-in-out;
 
 <body>
 
-<div class="header">Sambit Chatbot</div>
+<h1>🤖 Sambit Chatbot</h1>
 
-<div class="messages" id="messages"></div>
+<div id="chatbox"></div>
 
-<div id="voiceWave" class="voice-wave">
-<span></span>
-<span></span>
-<span></span>
-<span></span>
-<span></span>
-</div>
-
-<div class="input-area">
-
-<input id="input" placeholder="Ask me anything...">
-
-<button id="micBtn" class="voice-btn">🎤</button>
-
-<button id="acceptBtn" class="accept-btn" style="display:none;">✔</button>
-
-<button id="cancelBtn" class="cancel-btn" style="display:none;">❌</button>
+<input id="message" placeholder="Type message">
 
 <button onclick="sendMessage()">Send</button>
 
-</div>
+<button onclick="startVoice()">🎤 Voice</button>
+
+<br><br>
+
+<input type="file" id="imageUpload">
+
+<button onclick="sendImage()">📷 Analyze Image</button>
 
 <script>
 
-let recognition;
-let transcript="";
+async function sendMessage(){
 
-const micBtn=document.getElementById("micBtn");
-const acceptBtn=document.getElementById("acceptBtn");
-const cancelBtn=document.getElementById("cancelBtn");
-const voiceWave=document.getElementById("voiceWave");
-const input=document.getElementById("input");
+let message=document.getElementById("message").value
 
-async function requestMic(){
-try{
-await navigator.mediaDevices.getUserMedia({audio:true});
-}catch(e){
-console.log("Mic permission denied");
-}
-}
-
-requestMic();
-
-if ('webkitSpeechRecognition' in window){
-
-recognition=new webkitSpeechRecognition();
-
-recognition.continuous=true;
-recognition.interimResults=true;
-
-recognition.onresult=function(event){
-
-transcript="";
-
-for(let i=event.resultIndex;i<event.results.length;i++){
-
-transcript+=event.results[i][0].transcript;
-
-}
-
-};
-
-}
-
-/* MIC BUTTON */
-
-micBtn.addEventListener("click",function(){
-
-if(!recognition){
-alert("Voice not supported in this browser");
-return;
-}
-
-transcript="";
-
-voiceWave.style.display="flex";
-
-micBtn.style.display="none";
-acceptBtn.style.display="inline-block";
-cancelBtn.style.display="inline-block";
-
-recognition.start();
-
-});
-
-/* ACCEPT BUTTON */
-
-acceptBtn.onclick=function(){
-
-recognition.stop();
-
-input.value=transcript;
-
-voiceWave.style.display="none";
-
-micBtn.style.display="inline-block";
-acceptBtn.style.display="none";
-cancelBtn.style.display="none";
-
-};
-
-/* CANCEL BUTTON */
-
-cancelBtn.onclick=function(){
-
-recognition.stop();
-
-transcript="";
-
-voiceWave.style.display="none";
-
-micBtn.style.display="inline-block";
-acceptBtn.style.display="none";
-cancelBtn.style.display="none";
-
-};
-
-function sendMessage(){
-
-let message=input.value.trim();
-
-if(!message) return;
-
-const messages=document.getElementById("messages");
-
-messages.innerHTML+=`<div class="user">${message}</div>`;
-
-input.value="";
-
-messages.scrollTop=messages.scrollHeight;
-
-fetch("/chat",{
+let response=await fetch("/chat",{
 method:"POST",
-headers:{"Content-Type":"application/json"},
+headers:{
+"Content-Type":"application/json"
+},
 body:JSON.stringify({message:message})
 })
 
-.then(res=>res.json())
+let data=await response.json()
 
-.then(data=>{
+let chatbox=document.getElementById("chatbox")
 
-messages.innerHTML+=`<div class="bot">${data.reply}</div>`;
+chatbox.innerHTML += "<p><b>You:</b> "+message+"</p>"
+chatbox.innerHTML += "<p><b>AI:</b> "+data.reply+"</p>"
 
-messages.scrollTop=messages.scrollHeight;
-
-})
-
-.catch(()=>{
-messages.innerHTML+=`<div class="bot">Server error</div>`;
-});
+document.getElementById("message").value=""
 
 }
 
-input.addEventListener("keydown",function(e){
-if(e.key==="Enter") sendMessage();
-});
+function startVoice(){
+
+let recognition = new webkitSpeechRecognition()
+
+recognition.onresult=function(event){
+
+let text=event.results[0][0].transcript
+
+document.getElementById("message").value=text
+
+sendMessage()
+
+}
+
+recognition.start()
+
+}
+
+async function sendImage(){
+
+let fileInput=document.getElementById("imageUpload")
+
+let file=fileInput.files[0]
+
+let formData=new FormData()
+
+formData.append("image",file)
+
+let response=await fetch("/analyze-image",{
+method:"POST",
+body:formData
+})
+
+let data=await response.json()
+
+let chatbox=document.getElementById("chatbox")
+
+chatbox.innerHTML += "<p><b>Image Analysis:</b> "+data.result+"</p>"
+
+}
 
 </script>
 
@@ -306,48 +142,47 @@ if(e.key==="Enter") sendMessage();
 """
 
 
+@app.route("/")
+def home():
+    return HTML_PAGE
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
 
-    user_msg = request.json.get("message", "")
+    user_message = request.json["message"]
 
-    if not GROQ_API_KEY:
-        return jsonify({"reply": "API key not configured on server."})
+    url = "https://api.groq.com/openai/v1/chat/completions"
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    payload = {
-        "model": "llama-3.1-8b-instant",
+    data = {
+        "model": "llama3-70b-8192",
         "messages": [
-            {"role":"system","content":"You are a helpful AI assistant."},
-            {"role":"user","content":user_msg}
+            {"role": "system", "content": "You are Sambit Chatbot."},
+            {"role": "user", "content": user_message}
         ]
     }
 
-    try:
+    response = requests.post(url, headers=headers, json=data)
 
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=30
-        )
-
-        data = response.json()
-
-        if "choices" in data:
-            reply = data["choices"][0]["message"]["content"]
-        else:
-            reply = str(data)
-
-    except Exception as e:
-        reply = "Server error: " + str(e)
+    reply = response.json()["choices"][0]["message"]["content"]
 
     return jsonify({"reply": reply})
 
 
+@app.route("/analyze-image", methods=["POST"])
+def analyze_image():
+
+    image = request.files["image"]
+    image_bytes = image.read()
+
+    # For now just confirming upload
+    return jsonify({"result": "Image received. Image analysis feature coming soon."})
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run()
