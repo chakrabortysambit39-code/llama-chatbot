@@ -62,10 +62,25 @@ margin:5px;
 max-width:70%;
 }
 
+#voiceWave{
+display:none;
+text-align:center;
+font-size:20px;
+padding:6px;
+animation:pulse 1s infinite;
+}
+
+@keyframes pulse{
+0%{opacity:0.3;}
+50%{opacity:1;}
+100%{opacity:0.3;}
+}
+
 .input-area{
 display:flex;
 padding:10px;
 background:#111827;
+align-items:center;
 }
 
 input{
@@ -95,18 +110,12 @@ background:#1d4ed8;
 background:#10b981;
 }
 
-#wave{
-display:none;
-text-align:center;
-font-size:22px;
-padding:5px;
-animation:pulse 1s infinite;
+.accept-btn{
+background:#22c55e;
 }
 
-@keyframes pulse{
-0%{opacity:0.3;}
-50%{opacity:1;}
-100%{opacity:0.3;}
+.cancel-btn{
+background:#ef4444;
 }
 
 </style>
@@ -118,13 +127,17 @@ animation:pulse 1s infinite;
 
 <div class="messages" id="messages"></div>
 
-<div id="wave">🎤 Listening...</div>
+<div id="voiceWave">🌊 Listening...</div>
 
 <div class="input-area">
 
 <input id="input" placeholder="Ask me anything...">
 
-<button class="voice-btn" onclick="startVoice()">🎤</button>
+<button id="micBtn" class="voice-btn">🎤</button>
+
+<button id="acceptBtn" class="accept-btn" style="display:none;">✔</button>
+
+<button id="cancelBtn" class="cancel-btn" style="display:none;">❌</button>
 
 <button onclick="sendMessage()">Send</button>
 
@@ -133,6 +146,13 @@ animation:pulse 1s infinite;
 <script>
 
 let recognition;
+let transcript = "";
+
+const micBtn = document.getElementById("micBtn");
+const acceptBtn = document.getElementById("acceptBtn");
+const cancelBtn = document.getElementById("cancelBtn");
+const voiceWave = document.getElementById("voiceWave");
+const input = document.getElementById("input");
 
 async function requestMic(){
 
@@ -150,47 +170,77 @@ if ('webkitSpeechRecognition' in window){
 
 recognition = new webkitSpeechRecognition();
 
-recognition.continuous = false;
-recognition.interimResults = false;
-
-recognition.onstart = function(){
-document.getElementById("wave").style.display="block";
-};
-
-recognition.onend = function(){
-document.getElementById("wave").style.display="none";
-};
+recognition.continuous = true;
+recognition.interimResults = true;
 
 recognition.onresult = function(event){
 
-let text = event.results[0][0].transcript;
+transcript="";
 
-document.getElementById("input").value = text;
+for(let i=event.resultIndex;i<event.results.length;i++){
+
+transcript += event.results[i][0].transcript;
+
+}
 
 };
 
 }
 
-function startVoice(){
+micBtn.onclick = () => {
 
 if(!recognition){
 alert("Voice not supported in this browser");
 return;
 }
 
+transcript="";
+
+voiceWave.style.display="block";
+
+micBtn.style.display="none";
+acceptBtn.style.display="inline";
+cancelBtn.style.display="inline";
+
 recognition.start();
 
-}
+};
+
+acceptBtn.onclick = () => {
+
+recognition.stop();
+
+input.value = transcript;
+
+voiceWave.style.display="none";
+
+micBtn.style.display="inline";
+acceptBtn.style.display="none";
+cancelBtn.style.display="none";
+
+};
+
+cancelBtn.onclick = () => {
+
+recognition.stop();
+
+transcript="";
+
+voiceWave.style.display="none";
+
+micBtn.style.display="inline";
+acceptBtn.style.display="none";
+cancelBtn.style.display="none";
+
+};
 
 function sendMessage(){
-
-let input=document.getElementById("input");
 
 let message=input.value.trim();
 
 if(!message) return;
 
-let messages=document.getElementById("messages");
+const messages=document.getElementById("messages");
 
 messages.innerHTML += `<div class="user">${message}</div>`;
 
@@ -203,7 +253,9 @@ method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({message:message})
 })
+
 .then(res=>res.json())
+
 .then(data=>{
 
 messages.innerHTML += `<div class="bot">${data.reply}</div>`;
@@ -211,17 +263,18 @@ messages.innerHTML += `<div class="bot">${data.reply}</div>`;
 messages.scrollTop=messages.scrollHeight;
 
 })
+
 .catch(()=>{
+
 messages.innerHTML += `<div class="bot">Server error</div>`;
+
 });
 
 }
 
-document.getElementById("input").addEventListener("keydown",function(e){
+input.addEventListener("keydown",function(e){
 
-if(e.key==="Enter"){
-sendMessage();
-}
+if(e.key==="Enter") sendMessage();
 
 });
 
