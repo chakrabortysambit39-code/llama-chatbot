@@ -5,6 +5,7 @@ import os
 app = Flask(__name__)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 
 @app.route("/")
@@ -157,20 +158,9 @@ const cancelBtn=document.getElementById("cancelBtn");
 const voiceWave=document.getElementById("voiceWave");
 const input=document.getElementById("input");
 
-async function requestMic(){
-try{
-await navigator.mediaDevices.getUserMedia({audio:true});
-}catch(e){
-console.log("Mic permission denied");
-}
-}
-
-requestMic();
-
-if('webkitSpeechRecognition' in window){
+if ('webkitSpeechRecognition' in window){
 
 recognition=new webkitSpeechRecognition();
-
 recognition.continuous=true;
 recognition.interimResults=true;
 
@@ -361,35 +351,33 @@ def chat():
 def analyze():
 
     data=request.json
-    image=data.get("image")
+    image_data=data.get("image")
 
-    headers={
-        "Authorization":f"Bearer {GROQ_API_KEY}",
-        "Content-Type":"application/json"
-    }
+    image_base64=image_data.split(",")[1]
 
     payload={
-        "model":"llava-v1.5-7b-4096-preview",
-        "messages":[
-            {
-                "role":"user",
-                "content":[
-                    {"type":"text","text":"Describe this image."},
-                    {"type":"image_url","image_url":{"url":image}}
-                ]
-            }
-        ]
+        "contents":[{
+            "parts":[
+                {"text":"Describe this image"},
+                {
+                    "inline_data":{
+                        "mime_type":"image/jpeg",
+                        "data":image_base64
+                    }
+                }
+            ]
+        }]
     }
 
     response=requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers=headers,
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={GEMINI_API_KEY}",
+        headers={"Content-Type":"application/json"},
         json=payload
     )
 
-    data=response.json()
+    result=response.json()
 
-    reply=data["choices"][0]["message"]["content"]
+    reply=result["candidates"][0]["content"]["parts"][0]["text"]
 
     return jsonify({"reply":reply})
 
