@@ -62,20 +62,6 @@ margin:5px;
 max-width:70%;
 }
 
-#voiceWave{
-display:none;
-text-align:center;
-font-size:20px;
-padding:6px;
-animation:pulse 1s infinite;
-}
-
-@keyframes pulse{
-0%{opacity:0.3;}
-50%{opacity:1;}
-100%{opacity:0.3;}
-}
-
 .input-area{
 display:flex;
 padding:10px;
@@ -118,6 +104,35 @@ background:#22c55e;
 background:#ef4444;
 }
 
+/* Voice bars */
+
+.voice-wave{
+display:none;
+justify-content:center;
+align-items:center;
+gap:4px;
+height:40px;
+margin-top:5px;
+}
+
+.voice-wave span{
+width:6px;
+height:20px;
+background:#22c55e;
+border-radius:3px;
+animation:wave 1s infinite ease-in-out;
+}
+
+.voice-wave span:nth-child(2){animation-delay:0.1s;}
+.voice-wave span:nth-child(3){animation-delay:0.2s;}
+.voice-wave span:nth-child(4){animation-delay:0.3s;}
+.voice-wave span:nth-child(5){animation-delay:0.4s;}
+
+@keyframes wave{
+0%,100%{height:10px;}
+50%{height:30px;}
+}
+
 </style>
 </head>
 
@@ -127,7 +142,13 @@ background:#ef4444;
 
 <div class="messages" id="messages"></div>
 
-<div id="voiceWave">🌊 Listening...</div>
+<div id="voiceWave" class="voice-wave">
+<span></span>
+<span></span>
+<span></span>
+<span></span>
+<span></span>
+</div>
 
 <div class="input-area">
 
@@ -146,40 +167,38 @@ background:#ef4444;
 <script>
 
 let recognition;
-let transcript = "";
+let transcript="";
 
-const micBtn = document.getElementById("micBtn");
-const acceptBtn = document.getElementById("acceptBtn");
-const cancelBtn = document.getElementById("cancelBtn");
-const voiceWave = document.getElementById("voiceWave");
-const input = document.getElementById("input");
+const micBtn=document.getElementById("micBtn");
+const acceptBtn=document.getElementById("acceptBtn");
+const cancelBtn=document.getElementById("cancelBtn");
+const voiceWave=document.getElementById("voiceWave");
+const input=document.getElementById("input");
 
 async function requestMic(){
-
 try{
 await navigator.mediaDevices.getUserMedia({audio:true});
 }catch(e){
 console.log("Mic permission denied");
 }
-
 }
 
 requestMic();
 
 if ('webkitSpeechRecognition' in window){
 
-recognition = new webkitSpeechRecognition();
+recognition=new webkitSpeechRecognition();
 
-recognition.continuous = true;
-recognition.interimResults = true;
+recognition.continuous=true;
+recognition.interimResults=true;
 
-recognition.onresult = function(event){
+recognition.onresult=function(event){
 
 transcript="";
 
 for(let i=event.resultIndex;i<event.results.length;i++){
 
-transcript += event.results[i][0].transcript;
+transcript+=event.results[i][0].transcript;
 
 }
 
@@ -187,7 +206,9 @@ transcript += event.results[i][0].transcript;
 
 }
 
-micBtn.onclick = () => {
+/* MIC BUTTON */
+
+micBtn.addEventListener("click",function(){
 
 if(!recognition){
 alert("Voice not supported in this browser");
@@ -196,31 +217,35 @@ return;
 
 transcript="";
 
-voiceWave.style.display="block";
+voiceWave.style.display="flex";
 
 micBtn.style.display="none";
-acceptBtn.style.display="inline";
-cancelBtn.style.display="inline";
+acceptBtn.style.display="inline-block";
+cancelBtn.style.display="inline-block";
 
 recognition.start();
 
-};
+});
 
-acceptBtn.onclick = () => {
+/* ACCEPT BUTTON */
+
+acceptBtn.onclick=function(){
 
 recognition.stop();
 
-input.value = transcript;
+input.value=transcript;
 
 voiceWave.style.display="none";
 
-micBtn.style.display="inline";
+micBtn.style.display="inline-block";
 acceptBtn.style.display="none";
 cancelBtn.style.display="none";
 
 };
 
-cancelBtn.onclick = () => {
+/* CANCEL BUTTON */
+
+cancelBtn.onclick=function(){
 
 recognition.stop();
 
@@ -228,7 +253,7 @@ transcript="";
 
 voiceWave.style.display="none";
 
-micBtn.style.display="inline";
+micBtn.style.display="inline-block";
 acceptBtn.style.display="none";
 cancelBtn.style.display="none";
 
@@ -242,7 +267,7 @@ if(!message) return;
 
 const messages=document.getElementById("messages");
 
-messages.innerHTML += `<div class="user">${message}</div>`;
+messages.innerHTML+=`<div class="user">${message}</div>`;
 
 input.value="";
 
@@ -258,24 +283,20 @@ body:JSON.stringify({message:message})
 
 .then(data=>{
 
-messages.innerHTML += `<div class="bot">${data.reply}</div>`;
+messages.innerHTML+=`<div class="bot">${data.reply}</div>`;
 
 messages.scrollTop=messages.scrollHeight;
 
 })
 
 .catch(()=>{
-
-messages.innerHTML += `<div class="bot">Server error</div>`;
-
+messages.innerHTML+=`<div class="bot">Server error</div>`;
 });
 
 }
 
 input.addEventListener("keydown",function(e){
-
 if(e.key==="Enter") sendMessage();
-
 });
 
 </script>
@@ -301,8 +322,8 @@ def chat():
     payload = {
         "model": "llama-3.1-8b-instant",
         "messages": [
-            {"role": "system", "content": "You are a helpful AI assistant."},
-            {"role": "user", "content": user_msg}
+            {"role":"system","content":"You are a helpful AI assistant."},
+            {"role":"user","content":user_msg}
         ]
     }
 
