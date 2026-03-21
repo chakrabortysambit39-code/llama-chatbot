@@ -14,7 +14,7 @@ def home():
 <!DOCTYPE html>
 <html>
 <head>
-<title>Sambit AI Assistant</title>
+<title>Sambit AI Vision Assistant</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -63,6 +63,19 @@ margin:5px;
 max-width:70%;
 }
 
+video{
+width:100%;
+display:none;
+border-radius:10px;
+margin:10px 0;
+}
+
+#captureBtn{
+display:none;
+margin:10px;
+background:#22c55e;
+}
+
 .input-area{
 display:flex;
 padding:10px;
@@ -86,10 +99,6 @@ border-radius:8px;
 background:#2563eb;
 color:white;
 cursor:pointer;
-}
-
-button:hover{
-background:#1d4ed8;
 }
 
 .voice-wave{
@@ -124,11 +133,15 @@ animation:wave 1s infinite;
 <span></span><span></span><span></span><span></span><span></span>
 </div>
 
+<video id="camera" autoplay playsinline></video>
+<button id="captureBtn">📸 Capture</button>
+<canvas id="canvas" style="display:none;"></canvas>
+
 <div class="input-area">
 
 <input id="input" placeholder="Ask anything...">
 
-<button onclick="openCamera()">📷</button>
+<button onclick="startCamera()">📷</button>
 
 <button id="micBtn">🎤</button>
 
@@ -139,8 +152,6 @@ animation:wave 1s infinite;
 <button onclick="sendMessage()">Send</button>
 
 <button onclick="toggleVoice()">🔊</button>
-
-<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
 
 </div>
 
@@ -156,30 +167,28 @@ const cancelBtn=document.getElementById("cancelBtn");
 const voiceWave=document.getElementById("voiceWave");
 const input=document.getElementById("input");
 
+/* 🔊 SPEAK FUNCTION */
+
 function speak(text){
 
 if(!voiceEnabled) return;
 
 const speech=new SpeechSynthesisUtterance(text);
-
 speech.lang="en-US";
-speech.rate=1;
-speech.pitch=1;
 
 speechSynthesis.speak(speech);
 
 }
 
 function toggleVoice(){
-
 voiceEnabled=!voiceEnabled;
-
 }
+
+/* 🎤 VOICE INPUT */
 
 if ('webkitSpeechRecognition' in window){
 
 recognition=new webkitSpeechRecognition();
-
 recognition.continuous=true;
 recognition.interimResults=true;
 
@@ -188,9 +197,7 @@ recognition.onresult=function(event){
 transcript="";
 
 for(let i=event.resultIndex;i<event.results.length;i++){
-
 transcript+=event.results[i][0].transcript;
-
 }
 
 };
@@ -217,7 +224,6 @@ recognition.start();
 acceptBtn.onclick=function(){
 
 recognition.stop();
-
 input.value=transcript;
 
 voiceWave.style.display="none";
@@ -231,7 +237,6 @@ cancelBtn.style.display="none";
 cancelBtn.onclick=function(){
 
 recognition.stop();
-
 transcript="";
 
 voiceWave.style.display="none";
@@ -242,28 +247,70 @@ cancelBtn.style.display="none";
 
 };
 
-function openCamera(){
+/* 📷 CAMERA */
 
-document.getElementById("cameraInput").click();
+async function startCamera(){
+
+const video=document.getElementById("camera");
+const captureBtn=document.getElementById("captureBtn");
+
+video.style.display="block";
+captureBtn.style.display="block";
+
+const stream=await navigator.mediaDevices.getUserMedia({
+video:{facingMode:"environment"}
+});
+
+video.srcObject=stream;
 
 }
 
-document.getElementById("cameraInput").addEventListener("change",function(){
+document.getElementById("captureBtn").onclick=function(){
 
-let file=this.files[0];
+const video=document.getElementById("camera");
+const canvas=document.getElementById("canvas");
 
-if(!file) return;
+canvas.width=video.videoWidth;
+canvas.height=video.videoHeight;
 
-addMessage("bot","Image received.");
+const ctx=canvas.getContext("2d");
 
+ctx.drawImage(video,0,0);
+
+const imageData=canvas.toDataURL("image/jpeg");
+
+sendImage(imageData);
+
+};
+
+/* 🤖 SEND IMAGE */
+
+function sendImage(imageData){
+
+addMessage("user","📷 Image sent");
+
+fetch("/analyze",{
+
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({image:imageData})
+
+})
+.then(res=>res.json())
+.then(data=>{
+addMessage("bot",data.reply);
+speak(data.reply);
 });
+
+}
+
+/* 💬 CHAT */
 
 function addMessage(type,text){
 
 const messages=document.getElementById("messages");
 
 messages.innerHTML+=`<div class="${type}">${text}</div>`;
-
 messages.scrollTop=messages.scrollHeight;
 
 }
@@ -271,7 +318,6 @@ messages.scrollTop=messages.scrollHeight;
 function sendMessage(){
 
 let message=input.value.trim();
-
 if(!message) return;
 
 addMessage("user",message);
@@ -285,24 +331,17 @@ headers:{"Content-Type":"application/json"},
 body:JSON.stringify({message:message})
 
 })
-
 .then(res=>res.json())
-
 .then(data=>{
-
 addMessage("bot",data.reply);
-
 speak(data.reply);
-
-})
+});
 
 }
 
 input.addEventListener("keydown",function(e){
-
 if(e.key==="Enter") sendMessage();
-
-})
+});
 
 </script>
 
@@ -316,7 +355,6 @@ def chat():
     user_msg=request.json.get("message","")
 
     history=session.get("history",[])
-
     history.append({"role":"user","content":user_msg})
 
     payload={
@@ -340,10 +378,15 @@ def chat():
     reply=data["choices"][0]["message"]["content"]
 
     history.append({"role":"assistant","content":reply})
-
     session["history"]=history[-10:]
 
     return jsonify({"reply":reply})
+
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+
+    return jsonify({"reply":"Image captured! Vision AI can be connected here."})
 
 
 if __name__=="__main__":
