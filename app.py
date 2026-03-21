@@ -331,7 +331,7 @@ def chat():
     }
 
     headers={
-        "Authorization":f"Bearer {GROQ_API_KEY},
+        "Authorization":f"Bearer {GROQ_API_KEY}",
         "Content-Type":"application/json"
     }
 
