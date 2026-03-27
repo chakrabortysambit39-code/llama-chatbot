@@ -63,19 +63,6 @@ margin:5px;
 max-width:70%;
 }
 
-video{
-width:100%;
-display:none;
-margin-top:10px;
-border-radius:10px;
-}
-
-#captureBtn{
-display:none;
-margin:10px;
-background:#22c55e;
-}
-
 .input-area{
 display:flex;
 padding:10px;
@@ -90,7 +77,7 @@ border-radius:8px;
 }
 
 button{
-margin-left:6px;
+margin-left:5px;
 padding:10px;
 border:none;
 border-radius:8px;
@@ -98,6 +85,12 @@ background:#2563eb;
 color:white;
 cursor:pointer;
 }
+
+#voiceWave{
+display:none;
+text-align:center;
+}
+
 </style>
 </head>
 
@@ -107,8 +100,10 @@ cursor:pointer;
 
 <div class="messages" id="messages"></div>
 
-<video id="camera" autoplay playsinline></video>
-<button id="captureBtn">📸 Capture</button>
+<div id="voiceWave">🎤 Listening...</div>
+
+<video id="camera" style="display:none;width:100%;"></video>
+<button id="captureBtn" style="display:none;">📸 Capture</button>
 <canvas id="canvas" style="display:none;"></canvas>
 
 <div class="input-area">
@@ -116,17 +111,113 @@ cursor:pointer;
 <input id="input" placeholder="Ask anything...">
 
 <button onclick="startCamera()">📷</button>
+
+<button id="micBtn">🎤</button>
+
+<button id="acceptBtn" style="display:none;">✔</button>
+
+<button id="cancelBtn" style="display:none;">❌</button>
+
 <button onclick="sendMessage()">Send</button>
+
+<button onclick="toggleVoice()">🔊</button>
 
 </div>
 
 <script>
 
-function addMessage(type,text){
-const messages=document.getElementById("messages");
-messages.innerHTML+=`<div class="${type}">${text}</div>`;
-messages.scrollTop=messages.scrollHeight;
+let recognition;
+let transcript="";
+let voiceEnabled=true;
+
+const micBtn=document.getElementById("micBtn");
+const acceptBtn=document.getElementById("acceptBtn");
+const cancelBtn=document.getElementById("cancelBtn");
+const voiceWave=document.getElementById("voiceWave");
+const input=document.getElementById("input");
+
+/* SPEAK */
+
+function speak(text){
+
+if(!voiceEnabled) return;
+
+const speech=new SpeechSynthesisUtterance(text);
+speech.lang="en-US";
+
+speechSynthesis.speak(speech);
+
 }
+
+function toggleVoice(){
+voiceEnabled=!voiceEnabled;
+}
+
+/* VOICE INPUT */
+
+if ('webkitSpeechRecognition' in window){
+
+recognition=new webkitSpeechRecognition();
+
+recognition.continuous=false;
+recognition.interimResults=false;
+
+recognition.onstart=function(){
+voiceWave.style.display="block";
+};
+
+recognition.onend=function(){
+voiceWave.style.display="none";
+};
+
+recognition.onresult=function(event){
+
+transcript=event.results[0][0].transcript;
+
+};
+
+}
+
+/* MIC BUTTON */
+
+micBtn.onclick=function(){
+
+if(!recognition){
+alert("Voice not supported in this browser");
+return;
+}
+
+recognition.start();
+
+micBtn.style.display="none";
+acceptBtn.style.display="inline";
+cancelBtn.style.display="inline";
+
+};
+
+/* ACCEPT */
+
+acceptBtn.onclick=function(){
+
+input.value=transcript;
+
+micBtn.style.display="inline";
+acceptBtn.style.display="none";
+cancelBtn.style.display="none";
+
+};
+
+/* CANCEL */
+
+cancelBtn.onclick=function(){
+
+transcript="";
+
+micBtn.style.display="inline";
+acceptBtn.style.display="none";
+cancelBtn.style.display="none";
+
+};
 
 /* CAMERA */
 
@@ -146,30 +237,19 @@ video.srcObject=stream;
 
 }
 
-/* CAPTURE FIXED */
-
 document.getElementById("captureBtn").onclick=function(){
 
 const video=document.getElementById("camera");
 const canvas=document.getElementById("canvas");
 
-const scale=0.5;
-
-canvas.width=video.videoWidth*scale;
-canvas.height=video.videoHeight*scale;
+canvas.width=video.videoWidth*0.5;
+canvas.height=video.videoHeight*0.5;
 
 const ctx=canvas.getContext("2d");
 
 ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
 const imageData=canvas.toDataURL("image/jpeg",0.6);
-
-console.log("IMAGE SIZE:",imageData.length);
-
-if(imageData.length<1000){
-alert("Image capture failed");
-return;
-}
 
 sendImage(imageData);
 
@@ -191,30 +271,43 @@ body:JSON.stringify({image:imageData})
 .then(res=>res.json())
 .then(data=>{
 addMessage("bot",data.reply);
-})
-.catch(()=>{
-addMessage("bot","❌ Error sending image");
+speak(data.reply);
 });
 
 }
 
 /* CHAT */
 
+function addMessage(type,text){
+
+const messages=document.getElementById("messages");
+
+messages.innerHTML+=`<div class="${type}">${text}</div>`;
+
+messages.scrollTop=messages.scrollHeight;
+
+}
+
 function sendMessage(){
 
-let message=document.getElementById("input").value.trim();
+let message=input.value.trim();
 if(!message) return;
 
 addMessage("user",message);
 
+input.value="";
+
 fetch("/chat",{
+
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({message:message})
+
 })
 .then(res=>res.json())
 .then(data=>{
 addMessage("bot",data.reply);
+speak(data.reply);
 });
 
 }
@@ -225,30 +318,37 @@ addMessage("bot",data.reply);
 </html>
 """
 
-
 @app.route("/chat", methods=["POST"])
 def chat():
 
-    user_msg=request.json.get("message","")
+    try:
+        user_msg=request.json.get("message","")
 
-    payload={
-        "model":"llama-3.1-8b-instant",
-        "messages":[{"role":"user","content":user_msg}]
-    }
+        headers={
+            "Authorization":f"Bearer {GROQ_API_KEY}",
+            "Content-Type":"application/json"
+        }
 
-    headers={
-        "Authorization":f"Bearer {GROQ_API_KEY}",
-        "Content-Type":"application/json"
-    }
+        payload={
+            "model":"llama-3.1-8b-instant",
+            "messages":[{"role":"user","content":user_msg}]
+        }
 
-    response=requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers=headers,
-        json=payload
-    )
+        response=requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
 
-    data=response.json()
-    reply=data["choices"][0]["message"]["content"]
+        data=response.json()
+
+        if "choices" in data:
+            reply=data["choices"][0]["message"]["content"]
+        else:
+            reply=str(data)
+
+    except Exception as e:
+        reply="Server error: "+str(e)
 
     return jsonify({"reply":reply})
 
@@ -256,22 +356,19 @@ def chat():
 @app.route("/analyze", methods=["POST"])
 def analyze():
 
-    data=request.json
-    image_data=data.get("image")
-
-    if not image_data:
-        return jsonify({"reply":"❌ No image received"})
-
     try:
+        data=request.json
+        image_data=data.get("image")
 
-        print("IMAGE RECEIVED LENGTH:",len(image_data))
+        if not image_data:
+            return jsonify({"reply":"No image received"})
 
         image_base64=image_data.split(",")[1]
 
         payload={
             "contents":[{
                 "parts":[
-                    {"text":"Describe this image clearly"},
+                    {"text":"Describe this image"},
                     {
                         "inline_data":{
                             "mime_type":"image/jpeg",
@@ -290,15 +387,13 @@ def analyze():
 
         result=response.json()
 
-        print("GEMINI RESPONSE:",result)
-
         if "candidates" in result:
             reply=result["candidates"][0]["content"]["parts"][0]["text"]
         else:
-            reply="❌ Gemini error: "+str(result)
+            reply=str(result)
 
     except Exception as e:
-        reply="❌ Vision error: "+str(e)
+        reply="Vision error: "+str(e)
 
     return jsonify({"reply":reply})
 
