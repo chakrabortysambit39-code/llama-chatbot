@@ -15,7 +15,7 @@ def home():
 <!DOCTYPE html>
 <html>
 <head>
-<title>Sambit AI Vision Assistant</title>
+<title>Sambit AI Assistant</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -66,8 +66,8 @@ max-width:70%;
 video{
 width:100%;
 display:none;
+margin-top:10px;
 border-radius:10px;
-margin:10px 0;
 }
 
 #captureBtn{
@@ -80,7 +80,6 @@ background:#22c55e;
 display:flex;
 padding:10px;
 background:#111827;
-align-items:center;
 }
 
 input{
@@ -88,7 +87,6 @@ flex:1;
 padding:12px;
 border:none;
 border-radius:8px;
-font-size:16px;
 }
 
 button{
@@ -100,25 +98,6 @@ background:#2563eb;
 color:white;
 cursor:pointer;
 }
-
-.voice-wave{
-display:none;
-justify-content:center;
-gap:4px;
-height:30px;
-}
-
-.voice-wave span{
-width:6px;
-height:20px;
-background:#22c55e;
-animation:wave 1s infinite;
-}
-
-@keyframes wave{
-0%,100%{height:10px;}
-50%{height:30px;}
-}
 </style>
 </head>
 
@@ -127,10 +106,6 @@ animation:wave 1s infinite;
 <div class="header">Sambit AI Assistant</div>
 
 <div class="messages" id="messages"></div>
-
-<div id="voiceWave" class="voice-wave">
-<span></span><span></span><span></span><span></span><span></span>
-</div>
 
 <video id="camera" autoplay playsinline></video>
 <button id="captureBtn">📸 Capture</button>
@@ -141,90 +116,19 @@ animation:wave 1s infinite;
 <input id="input" placeholder="Ask anything...">
 
 <button onclick="startCamera()">📷</button>
-
-<button id="micBtn">🎤</button>
-
-<button id="acceptBtn" style="display:none;">✔</button>
-
-<button id="cancelBtn" style="display:none;">❌</button>
-
 <button onclick="sendMessage()">Send</button>
-
-<button onclick="toggleVoice()">🔊</button>
 
 </div>
 
 <script>
 
-let recognition;
-let transcript="";
-let voiceEnabled=true;
-
-const micBtn=document.getElementById("micBtn");
-const acceptBtn=document.getElementById("acceptBtn");
-const cancelBtn=document.getElementById("cancelBtn");
-const voiceWave=document.getElementById("voiceWave");
-const input=document.getElementById("input");
-
-/* 🔊 SPEAK */
-
-function speak(text){
-if(!voiceEnabled) return;
-const speech=new SpeechSynthesisUtterance(text);
-speech.lang="en-US";
-speechSynthesis.speak(speech);
+function addMessage(type,text){
+const messages=document.getElementById("messages");
+messages.innerHTML+=`<div class="${type}">${text}</div>`;
+messages.scrollTop=messages.scrollHeight;
 }
 
-function toggleVoice(){
-voiceEnabled=!voiceEnabled;
-}
-
-/* 🎤 VOICE */
-
-if ('webkitSpeechRecognition' in window){
-recognition=new webkitSpeechRecognition();
-recognition.continuous=true;
-recognition.interimResults=true;
-
-recognition.onresult=function(event){
-transcript="";
-for(let i=event.resultIndex;i<event.results.length;i++){
-transcript+=event.results[i][0].transcript;
-}
-};
-}
-
-micBtn.onclick=function(){
-if(!recognition){
-alert("Voice not supported");
-return;
-}
-voiceWave.style.display="flex";
-micBtn.style.display="none";
-acceptBtn.style.display="inline";
-cancelBtn.style.display="inline";
-recognition.start();
-};
-
-acceptBtn.onclick=function(){
-recognition.stop();
-input.value=transcript;
-voiceWave.style.display="none";
-micBtn.style.display="inline";
-acceptBtn.style.display="none";
-cancelBtn.style.display="none";
-};
-
-cancelBtn.onclick=function(){
-recognition.stop();
-transcript="";
-voiceWave.style.display="none";
-micBtn.style.display="inline";
-acceptBtn.style.display="none";
-cancelBtn.style.display="none";
-};
-
-/* 📷 CAMERA */
+/* CAMERA */
 
 async function startCamera(){
 
@@ -242,57 +146,66 @@ video.srcObject=stream;
 
 }
 
+/* CAPTURE FIXED */
+
 document.getElementById("captureBtn").onclick=function(){
 
 const video=document.getElementById("camera");
 const canvas=document.getElementById("canvas");
 
-canvas.width=video.videoWidth;
-canvas.height=video.videoHeight;
+const scale=0.5;
+
+canvas.width=video.videoWidth*scale;
+canvas.height=video.videoHeight*scale;
 
 const ctx=canvas.getContext("2d");
-ctx.drawImage(video,0,0);
 
-const imageData=canvas.toDataURL("image/jpeg");
+ctx.drawImage(video,0,0,canvas.width,canvas.height);
+
+const imageData=canvas.toDataURL("image/jpeg",0.6);
+
+console.log("IMAGE SIZE:",imageData.length);
+
+if(imageData.length<1000){
+alert("Image capture failed");
+return;
+}
 
 sendImage(imageData);
 
 };
 
-/* 🤖 SEND IMAGE */
+/* SEND IMAGE */
 
 function sendImage(imageData){
 
 addMessage("user","📷 Image sent");
 
 fetch("/analyze",{
+
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({image:imageData})
+
 })
 .then(res=>res.json())
 .then(data=>{
 addMessage("bot",data.reply);
-speak(data.reply);
+})
+.catch(()=>{
+addMessage("bot","❌ Error sending image");
 });
 
 }
 
-/* 💬 CHAT */
-
-function addMessage(type,text){
-const messages=document.getElementById("messages");
-messages.innerHTML+=`<div class="${type}">${text}</div>`;
-messages.scrollTop=messages.scrollHeight;
-}
+/* CHAT */
 
 function sendMessage(){
 
-let message=input.value.trim();
+let message=document.getElementById("input").value.trim();
 if(!message) return;
 
 addMessage("user",message);
-input.value="";
 
 fetch("/chat",{
 method:"POST",
@@ -302,14 +215,9 @@ body:JSON.stringify({message:message})
 .then(res=>res.json())
 .then(data=>{
 addMessage("bot",data.reply);
-speak(data.reply);
 });
 
 }
-
-input.addEventListener("keydown",function(e){
-if(e.key==="Enter") sendMessage();
-});
 
 </script>
 
@@ -317,17 +225,15 @@ if(e.key==="Enter") sendMessage();
 </html>
 """
 
+
 @app.route("/chat", methods=["POST"])
 def chat():
 
     user_msg=request.json.get("message","")
 
-    history=session.get("history",[])
-    history.append({"role":"user","content":user_msg})
-
     payload={
         "model":"llama-3.1-8b-instant",
-        "messages":history
+        "messages":[{"role":"user","content":user_msg}]
     }
 
     headers={
@@ -344,9 +250,6 @@ def chat():
     data=response.json()
     reply=data["choices"][0]["message"]["content"]
 
-    history.append({"role":"assistant","content":reply})
-    session["history"]=history[-10:]
-
     return jsonify({"reply":reply})
 
 
@@ -356,7 +259,12 @@ def analyze():
     data=request.json
     image_data=data.get("image")
 
+    if not image_data:
+        return jsonify({"reply":"❌ No image received"})
+
     try:
+
+        print("IMAGE RECEIVED LENGTH:",len(image_data))
 
         image_base64=image_data.split(",")[1]
 
@@ -382,10 +290,15 @@ def analyze():
 
         result=response.json()
 
-        reply=result["candidates"][0]["content"]["parts"][0]["text"]
+        print("GEMINI RESPONSE:",result)
+
+        if "candidates" in result:
+            reply=result["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            reply="❌ Gemini error: "+str(result)
 
     except Exception as e:
-        reply="Vision error: "+str(e)
+        reply="❌ Vision error: "+str(e)
 
     return jsonify({"reply":reply})
 
