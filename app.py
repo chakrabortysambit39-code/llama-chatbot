@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
-import requests, os
+import requests
+import os
 
 app = Flask(__name__)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
 
 @app.route("/")
 def home():
@@ -14,44 +16,39 @@ def home():
 <head>
 <title>Sambit AI</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <style>
 body{margin:0;font-family:Arial;background:#343541;color:white;display:flex;height:100vh;}
-.sidebar{width:260px;background:#202123;padding:10px;display:flex;flex-direction:column;}
-.new-chat{padding:10px;border:1px solid #555;border-radius:6px;cursor:pointer;margin-bottom:10px;}
-.chat-item{padding:10px;border-radius:6px;margin-bottom:5px;cursor:pointer;}
-.chat-item:hover{background:#2a2b32;}
-
+.sidebar{width:250px;background:#202123;padding:10px;}
+.chat-item{padding:8px;margin:5px;background:#2a2b32;border-radius:5px;cursor:pointer;}
 .main{flex:1;display:flex;flex-direction:column;}
 .messages{flex:1;overflow-y:auto;padding:20px;}
-.user{background:#19c37d;padding:10px;margin:5px;border-radius:10px;align-self:flex-end;max-width:70%;}
-.bot{background:#444654;padding:10px;margin:5px;border-radius:10px;max-width:70%;}
-.typing{opacity:0.7;margin:5px;}
-
+.user{background:#19c37d;padding:10px;margin:5px;border-radius:10px;align-self:flex-end;}
+.bot{background:#444654;padding:10px;margin:5px;border-radius:10px;}
 .input-area{display:flex;padding:10px;background:#40414f;}
 input{flex:1;padding:10px;border:none;border-radius:6px;}
-button{margin-left:5px;padding:10px;border:none;border-radius:6px;background:#19c37d;color:white;cursor:pointer;}
+button{margin-left:5px;padding:10px;border:none;border-radius:6px;background:#19c37d;color:white;}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<div class="new-chat" onclick="newChat()">➕ New Chat</div>
+<button onclick="newChat()">➕ New Chat</button>
 <div id="chatList"></div>
 </div>
 
 <div class="main">
+
 <div class="messages" id="messages"></div>
-<div id="typing" class="typing" style="display:none;">AI is typing...</div>
 
 <div class="input-area">
-<input id="input" placeholder="Message..." />
+<input id="input" placeholder="Message...">
 <button onclick="startVoice()">🎤</button>
 <button onclick="startCamera()">📷</button>
 <button onclick="sendMessage()">Send</button>
 <button onclick="toggleVoice()">🔊</button>
 </div>
+
 </div>
 
 <video id="camera" style="display:none;width:100%;"></video>
@@ -61,8 +58,8 @@ button{margin-left:5px;padding:10px;border:none;border-radius:6px;background:#19
 <script>
 
 let chats = JSON.parse(localStorage.getItem("chats")) || {};
-let currentChat=null;
-let voiceEnabled=true;
+let currentChat = null;
+let voiceEnabled = true;
 
 /* CHAT SYSTEM */
 
@@ -109,7 +106,7 @@ chat.title=text.substring(0,20);
 save();renderChats();renderMessages();
 }
 
-/* CHAT SEND */
+/* SEND MESSAGE */
 
 function sendMessage(){
 let input=document.getElementById("input");
@@ -118,13 +115,14 @@ if(!msg) return;
 
 addMessage("user",msg);
 input.value="";
-document.getElementById("typing").style.display="block";
 
-fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},
-body:JSON.stringify({message:msg})})
+fetch("/chat",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({message:msg})
+})
 .then(res=>res.json())
 .then(data=>{
-document.getElementById("typing").style.display="none";
 addMessage("bot",data.reply);
 speak(data.reply);
 });
@@ -144,7 +142,8 @@ function toggleVoice(){voiceEnabled=!voiceEnabled;}
 
 function startVoice(){
 if(!('webkitSpeechRecognition' in window)){
-alert("Voice not supported");return;
+alert("Voice not supported");
+return;
 }
 let r=new webkitSpeechRecognition();
 r.onresult=e=>{
@@ -168,15 +167,20 @@ video.srcObject=stream;
 document.getElementById("captureBtn").onclick=function(){
 let video=document.getElementById("camera");
 let canvas=document.getElementById("canvas");
+
 canvas.width=video.videoWidth*0.5;
 canvas.height=video.videoHeight*0.5;
-canvas.getContext("2d").drawImage(video,0,0,canvas.width,canvas.height);
+
+let ctx=canvas.getContext("2d");
+ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
 let img=canvas.toDataURL("image/jpeg",0.6);
 
-fetch("/analyze",{method:"POST",
+fetch("/analyze",{
+method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({image:img})})
+body:JSON.stringify({image:img})
+})
 .then(res=>res.json())
 .then(data=>{
 addMessage("bot",data.reply);
@@ -184,33 +188,44 @@ speak(data.reply);
 });
 }
 
-/* ENTER */
-
-document.getElementById("input").addEventListener("keydown",e=>{
-if(e.key==="Enter") sendMessage();
-});
-
 renderChats();
 
 </script>
+
 </body>
 </html>
 """
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        user=request.json.get("message","")
-        headers={"Authorization":f"Bearer {GROQ_API_KEY}",
-                 "Content-Type":"application/json"}
-        payload={"model":"llama-3.1-8b-instant",
-                 "messages":[{"role":"user","content":user}]}
-        r=requests.post("https://api.groq.com/openai/v1/chat/completions",
-                        headers=headers,json=payload)
-        data=r.json()
-        reply=data["choices"][0]["message"]["content"]
+        user = request.json.get("message", "")
+
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "llama-3.1-8b-instant",
+            "messages": [{"role": "user", "content": user}]
+        }
+
+        r = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+
+        data = r.json()
+        reply = data["choices"][0]["message"]["content"]
+
     except Exception as e:
-        reply="Error: "+str(e)
-    return jsonify({"reply":reply})
+        reply = "Error: " + str(e)
+
+    return jsonify({"reply": reply})
+
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -237,26 +252,24 @@ def analyze():
             }]
         }
 
-        response = requests.post(
-           f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
             headers={"Content-Type": "application/json"},
             json=payload
         )
 
-        result = response.json()
+        result = r.json()
 
-        print("GEMINI RAW RESPONSE:", result)  # 🔥 DEBUG
-
-        # ✅ SAFE CHECK
         if "candidates" in result:
             reply = result["candidates"][0]["content"]["parts"][0]["text"]
         else:
-            reply = "❌ Gemini API error: " + str(result)
+            reply = "❌ Gemini error: " + str(result)
 
     except Exception as e:
-        reply = "❌ Vision crash: " + str(e)
+        reply = "❌ Vision error: " + str(e)
 
     return jsonify({"reply": reply})
-    
-if __name__=="__main__":
-    app.run(host="0.0.0.0",port=5000)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
