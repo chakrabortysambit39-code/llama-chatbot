@@ -196,7 +196,6 @@ renderChats();
 </body>
 </html>
 """
-
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
@@ -216,19 +215,48 @@ def chat():
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
-        img=request.json.get("image").split(",")[1]
-        payload={"contents":[{"parts":[
-            {"text":"Describe this image"},
-            {"inline_data":{"mime_type":"image/jpeg","data":img}}
-        ]}]}
-        r=requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={GEMINI_API_KEY}",
-            headers={"Content-Type":"application/json"},json=payload)
-        res=r.json()
-        reply=res["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception as e:
-        reply="Vision error: "+str(e)
-    return jsonify({"reply":reply})
+        data = request.json
+        image_data = data.get("image")
 
+        if not image_data:
+            return jsonify({"reply": "❌ No image received"})
+
+        image_base64 = image_data.split(",")[1]
+
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": "Describe this image clearly"},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": image_base64
+                        }
+                    }
+                ]
+            }]
+        }
+
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json=payload
+        )
+
+        result = response.json()
+
+        print("GEMINI RAW RESPONSE:", result)  # 🔥 DEBUG
+
+        # ✅ SAFE CHECK
+        if "candidates" in result:
+            reply = result["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            reply = "❌ Gemini API error: " + str(result)
+
+    except Exception as e:
+        reply = "❌ Vision crash: " + str(e)
+
+    return jsonify({"reply": reply})
+    
 if __name__=="__main__":
     app.run(host="0.0.0.0",port=5000)
