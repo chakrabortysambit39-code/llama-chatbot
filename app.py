@@ -270,7 +270,7 @@ def analyze():
         }
 
         r = requests.post(
-            "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-xl",
+            "https://router.huggingface.co/models/Salesforce/blip2-flan-t5-xl",
             headers=headers,
             json=payload
         )
