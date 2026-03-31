@@ -200,11 +200,32 @@ function startCamera(){
 }
 
 function capture(){
-    let c=document.createElement("canvas");
-    c.width=camera.videoWidth;
-    c.height=camera.videoHeight;
-    c.getContext("2d").drawImage(camera,0,0);
+    const video = document.getElementById("camera");
 
+    if (!video.srcObject) {
+        alert("❌ Start camera first");
+        return;
+    }
+
+    // wait until video is ready
+    if (video.readyState !== 4) {
+        alert("⏳ Camera still loading, try again");
+        return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const base64 = canvas.toDataURL("image/jpeg");
+
+    console.log("✅ Image captured");
+
+    sendImage(base64.split(",")[1]);
+}
     let base64=c.toDataURL("image/jpeg").split(",")[1];
     sendImage(base64);
 }
