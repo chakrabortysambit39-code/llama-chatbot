@@ -247,8 +247,6 @@ def chat():
         reply = "Error: " + str(e)
 
     return jsonify({"reply": reply})
-
-
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
@@ -256,10 +254,14 @@ def analyze():
         image_data = data.get("image")
         question = data.get("question", "Describe this image")
 
+        if not image_data:
+            return jsonify({"reply": "❌ No image received"})
+
         image_base64 = image_data.split(",")[1]
 
         headers = {
-            "Authorization": f"Bearer {HF_API_KEY}"
+            "Authorization": f"Bearer {HF_API_KEY}",
+            "Content-Type": "application/json"
         }
 
         payload = {
@@ -269,16 +271,24 @@ def analyze():
             }
         }
 
-        r = requests.post(
-            "https://router.huggingface.co/models/Salesforce/blip2-flan-t5-xl",
+        response = requests.post(
+            "https://router.huggingface.co/hf-inference/models/Salesforce/blip2-flan-t5-xl",
             headers=headers,
             json=payload
         )
 
-        result = r.json()
+        # 🔥 IMPORTANT FIX (no crash)
+        try:
+            result = response.json()
+        except:
+            return jsonify({"reply": "❌ HF returned invalid response"})
+
+        print("HF RESPONSE:", result)
 
         if isinstance(result, list):
-            reply = result[0]["generated_text"]
+            reply = result[0].get("generated_text", "No answer")
+        elif "generated_text" in result:
+            reply = result["generated_text"]
         else:
             reply = "❌ HF error: " + str(result)
 
@@ -286,7 +296,3 @@ def analyze():
         reply = "❌ Vision QA error: " + str(e)
 
     return jsonify({"reply": reply})
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
