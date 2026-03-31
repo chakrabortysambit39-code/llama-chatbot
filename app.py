@@ -1,11 +1,12 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import base64
 
 app = Flask(__name__)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+HF_API_KEY = os.environ.get("HF_API_KEY")
 
 
 @app.route("/")
@@ -237,33 +238,24 @@ def analyze():
             return jsonify({"reply": "❌ No image received"})
 
         image_base64 = image_data.split(",")[1]
+        image_bytes = base64.b64decode(image_base64)
 
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": "Describe this image clearly"},
-                    {
-                        "inline_data": {
-                            "mime_type": "image/jpeg",
-                            "data": image_base64
-                        }
-                    }
-                ]
-            }]
+        headers = {
+            "Authorization": f"Bearer {HF_API_KEY}"
         }
 
         r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json=payload
+            "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
+            headers=headers,
+            data=image_bytes
         )
 
         result = r.json()
 
-        if "candidates" in result:
-            reply = result["candidates"][0]["content"]["parts"][0]["text"]
+        if isinstance(result, list):
+            reply = result[0]["generated_text"]
         else:
-            reply = "❌ Gemini error: " + str(result)
+            reply = "❌ HF error: " + str(result)
 
     except Exception as e:
         reply = "❌ Vision error: " + str(e)
