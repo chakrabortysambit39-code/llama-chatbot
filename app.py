@@ -15,7 +15,7 @@ def home():
 <!DOCTYPE html>
 <html>
 <head>
-<title>Sambit AI</title>
+<title>Sambit AI Vision</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body{margin:0;font-family:Arial;background:#343541;color:white;display:flex;height:100vh;}
@@ -43,7 +43,7 @@ button{margin-left:5px;padding:10px;border:none;border-radius:6px;background:#19
 <div class="messages" id="messages"></div>
 
 <div class="input-area">
-<input id="input" placeholder="Message...">
+<input id="input" placeholder="Ask anything...">
 <button onclick="startVoice()">🎤</button>
 <button onclick="startCamera()">📷</button>
 <button onclick="sendMessage()">Send</button>
@@ -53,7 +53,7 @@ button{margin-left:5px;padding:10px;border:none;border-radius:6px;background:#19
 </div>
 
 <video id="camera" style="display:none;width:100%;"></video>
-<button id="captureBtn" style="display:none;">📸</button>
+<button id="captureBtn" style="display:none;">📸 Capture</button>
 <canvas id="canvas" style="display:none;"></canvas>
 
 <script>
@@ -61,6 +61,7 @@ button{margin-left:5px;padding:10px;border:none;border-radius:6px;background:#19
 let chats = JSON.parse(localStorage.getItem("chats")) || {};
 let currentChat = null;
 let voiceEnabled = true;
+let currentImage = null;
 
 /* CHAT SYSTEM */
 
@@ -110,12 +111,35 @@ save();renderChats();renderMessages();
 /* SEND MESSAGE */
 
 function sendMessage(){
+
 let input=document.getElementById("input");
 let msg=input.value.trim();
 if(!msg) return;
 
 addMessage("user",msg);
 input.value="";
+
+/* IMAGE MODE */
+
+if(currentImage){
+
+fetch("/analyze",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+image: currentImage,
+question: msg
+})
+})
+.then(res=>res.json())
+.then(data=>{
+addMessage("bot",data.reply);
+speak(data.reply);
+});
+
+}else{
+
+/* NORMAL CHAT */
 
 fetch("/chat",{
 method:"POST",
@@ -127,6 +151,9 @@ body:JSON.stringify({message:msg})
 addMessage("bot",data.reply);
 speak(data.reply);
 });
+
+}
+
 }
 
 /* SPEAK */
@@ -158,6 +185,7 @@ r.start();
 async function startCamera(){
 let video=document.getElementById("camera");
 let btn=document.getElementById("captureBtn");
+
 video.style.display="block";
 btn.style.display="block";
 
@@ -166,6 +194,7 @@ video.srcObject=stream;
 }
 
 document.getElementById("captureBtn").onclick=function(){
+
 let video=document.getElementById("camera");
 let canvas=document.getElementById("canvas");
 
@@ -175,18 +204,10 @@ canvas.height=video.videoHeight*0.5;
 let ctx=canvas.getContext("2d");
 ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-let img=canvas.toDataURL("image/jpeg",0.6);
+currentImage = canvas.toDataURL("image/jpeg",0.6);
 
-fetch("/analyze",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({image:img})
-})
-.then(res=>res.json())
-.then(data=>{
-addMessage("bot",data.reply);
-speak(data.reply);
-});
+addMessage("bot","📷 Image captured! Ask me anything about it.");
+
 }
 
 renderChats();
@@ -233,21 +254,25 @@ def analyze():
     try:
         data = request.json
         image_data = data.get("image")
-
-        if not image_data:
-            return jsonify({"reply": "❌ No image received"})
+        question = data.get("question", "Describe this image")
 
         image_base64 = image_data.split(",")[1]
-        image_bytes = base64.b64decode(image_base64)
 
         headers = {
             "Authorization": f"Bearer {HF_API_KEY}"
         }
 
+        payload = {
+            "inputs": {
+                "image": image_base64,
+                "question": question
+            }
+        }
+
         r = requests.post(
-            "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
+            "https://api-inference.huggingface.co/models/Salesforce/blip2-flan-t5-xl",
             headers=headers,
-            data=image_bytes
+            json=payload
         )
 
         result = r.json()
@@ -258,7 +283,7 @@ def analyze():
             reply = "❌ HF error: " + str(result)
 
     except Exception as e:
-        reply = "❌ Vision error: " + str(e)
+        reply = "❌ Vision QA error: " + str(e)
 
     return jsonify({"reply": reply})
 
