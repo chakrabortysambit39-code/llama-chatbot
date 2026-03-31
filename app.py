@@ -26,7 +26,6 @@ LOGIN_HTML = """
 <body style="background:#0f172a;color:white;text-align:center;font-family:sans-serif;">
 
 <h2>Login</h2>
-
 <input id="user" placeholder="Username"><br>
 <input id="pass" type="password" placeholder="Password"><br>
 
@@ -35,7 +34,7 @@ LOGIN_HTML = """
 
 <script>
 async function login(){
-    let r = await fetch("/login",{
+    let r = await fetch(window.location.origin + "/login",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({username:user.value,password:pass.value})
@@ -45,7 +44,7 @@ async function login(){
 }
 
 async function signup(){
-    await fetch("/signup",{
+    await fetch(window.location.origin + "/signup",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({username:user.value,password:pass.value})
@@ -91,7 +90,6 @@ video, img {margin:10px;border-radius:10px;}
 
 <!-- CAMERA -->
 <video id="camera" width="300" autoplay playsinline></video>
-<canvas id="canvas" style="display:none;"></canvas>
 <img id="preview" width="300">
 
 <br>
@@ -104,15 +102,18 @@ video, img {margin:10px;border-radius:10px;}
 
 <script>
 let currentChat=null;
+let video=document.getElementById("camera");
 
 // -------- CHAT --------
 async function newChat(){
-    await fetch("/new_chat");
+    await fetch(window.location.origin + "/new_chat");
     loadChats();
 }
 
 function loadChats(){
-    fetch("/get_chats").then(r=>r.json()).then(d=>{
+    fetch(window.location.origin + "/get_chats")
+    .then(r=>r.json())
+    .then(d=>{
         history.innerHTML="";
         d.forEach(c=>{
             let div=document.createElement("div");
@@ -125,7 +126,9 @@ function loadChats(){
 
 function loadMessages(id){
     currentChat=id;
-    fetch("/get_messages/"+id).then(r=>r.json()).then(d=>{
+    fetch(window.location.origin + "/get_messages/"+id)
+    .then(r=>r.json())
+    .then(d=>{
         messages.innerHTML="";
         d.forEach(m=>{
             messages.innerHTML+=`<p><b>${m.role}:</b> ${m.content}</p>`;
@@ -136,15 +139,16 @@ function loadMessages(id){
 async function send(){
     if(!currentChat){
         await newChat();
-        let chats=await fetch("/get_chats").then(r=>r.json());
+        let chats=await fetch(window.location.origin + "/get_chats").then(r=>r.json());
         currentChat=chats[chats.length-1].id;
     }
 
     let text=msg.value;
-    messages.innerHTML+=`<p><b>user:</b> ${text}</p>`;
     msg.value="";
 
-    let r=await fetch("/chat",{
+    messages.innerHTML+=`<p><b>user:</b> ${text}</p>`;
+
+    let r=await fetch(window.location.origin + "/chat",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({message:text,chat_id:currentChat})
@@ -155,18 +159,12 @@ async function send(){
 }
 
 // -------- CAMERA --------
-let video=document.getElementById("camera");
-let canvas=document.getElementById("canvas");
-let ctx=canvas.getContext("2d");
-
 function startCamera(){
     navigator.mediaDevices.getUserMedia({video:true})
     .then(stream=>{
         video.srcObject=stream;
-
-        video.onloadeddata=()=>{
-            console.log("Camera READY ✅");
-        };
+        video.play();
+        console.log("Camera started");
     })
     .catch(e=>alert(e));
 }
@@ -177,43 +175,46 @@ function capture(){
         return;
     }
 
-    if(video.videoWidth === 0){
-        alert("Wait 1 sec for camera");
-        return;
-    }
+    let canvas=document.createElement("canvas");
+    canvas.width=video.videoWidth || 300;
+    canvas.height=video.videoHeight || 300;
 
-    canvas.width=video.videoWidth;
-    canvas.height=video.videoHeight;
-
-    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    let ctx=canvas.getContext("2d");
+    ctx.drawImage(video,0,0);
 
     let data=canvas.toDataURL("image/jpeg");
 
-    // PREVIEW (IMPORTANT DEBUG)
     document.getElementById("preview").src=data;
 
-    console.log("CAPTURE SUCCESS ✅");
+    console.log("Sending to backend...");
 
     sendImage(data.split(",")[1]);
 }
 
+// -------- SEND IMAGE --------
 async function sendImage(img){
-    let r=await fetch("/vision",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            image:img,
-            question:imgQuestion.value
-        })
-    });
+    try{
+        let res = await fetch(window.location.origin + "/vision", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+                image: img,
+                question: document.getElementById("imgQuestion").value || "Describe image"
+            })
+        });
 
-    let d=await r.json();
-    messages.innerHTML+=`<p><b>Vision:</b> ${d.reply}</p>`;
+        let data = await res.json();
+
+        messages.innerHTML+=`<p><b>Vision:</b> ${data.reply}</p>`;
+
+    }catch(e){
+        alert("ERROR: " + e);
+    }
 }
 
 // -------- LOGOUT --------
 function logout(){
-    fetch("/logout").then(()=>location.reload());
+    fetch(window.location.origin + "/logout").then(()=>location.reload());
 }
 
 loadChats();
@@ -286,30 +287,34 @@ def chat():
 
 @app.route("/vision", methods=["POST"])
 def vision():
-    img=base64.b64decode(request.json["image"])
-    q=request.json.get("question","Describe image")
+    try:
+        img=base64.b64decode(request.json["image"])
+        q=request.json.get("question","Describe image")
 
-    hf=requests.post(
-        "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
-        headers={"Authorization": f"Bearer {HF_API_KEY}"},
-        data=img
-    )
+        hf=requests.post(
+            "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
+            headers={"Authorization": f"Bearer {HF_API_KEY}"},
+            data=img
+        )
 
-    cap=hf.json()
-    caption=cap[0]["generated_text"] if isinstance(cap,list) else str(cap)
+        cap=hf.json()
+        caption=cap[0]["generated_text"] if isinstance(cap,list) else str(cap)
 
-    prompt=f"{caption}. Question: {q}"
+        prompt=f"{caption}. Question: {q}"
 
-    g=requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-        json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}]}
-    )
+        g=requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}]}
+        )
 
-    data=g.json()
-    reply=data["choices"][0]["message"]["content"] if "choices" in data else str(data)
+        data=g.json()
+        reply=data["choices"][0]["message"]["content"] if "choices" in data else str(data)
 
-    return jsonify({"reply":reply})
+        return jsonify({"reply":reply})
+
+    except Exception as e:
+        return jsonify({"reply":"Error: "+str(e)})
 
 @app.route("/new_chat")
 def new_chat():
