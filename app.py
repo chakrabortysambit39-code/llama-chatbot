@@ -26,6 +26,7 @@ LOGIN_HTML = """
 <body style="background:#0f172a;color:white;text-align:center;font-family:sans-serif;">
 
 <h2>Login</h2>
+
 <input id="user" placeholder="Username"><br>
 <input id="pass" type="password" placeholder="Password"><br>
 
@@ -39,7 +40,7 @@ async function login(){
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({username:user.value,password:pass.value})
     });
-    let t=await r.text();
+    let t = await r.text();
     if(t=="ok") location.reload();
 }
 
@@ -164,7 +165,6 @@ function startCamera(){
     .then(stream=>{
         video.srcObject=stream;
         video.play();
-        console.log("Camera started");
     })
     .catch(e=>alert(e));
 }
@@ -182,11 +182,9 @@ function capture(){
     let ctx=canvas.getContext("2d");
     ctx.drawImage(video,0,0);
 
-    let data=canvas.toDataURL("image/jpeg");
+    let data=canvas.toDataURL("image/jpeg", 0.6);
 
     document.getElementById("preview").src=data;
-
-    console.log("Sending to backend...");
 
     sendImage(data.split(",")[1]);
 }
@@ -291,10 +289,10 @@ def vision():
         img = base64.b64decode(request.json["image"])
         question = request.json.get("question", "Describe image")
 
-        # ---- HF CALL WITH TIMEOUT + RETRY ----
-        caption = "Unable to read image"
+        caption = ""
 
-        for _ in range(2):  # retry 2 times
+        # HF with retry
+        for _ in range(2):
             try:
                 hf = requests.post(
                     "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
@@ -302,26 +300,33 @@ def vision():
                     data=img,
                     timeout=10
                 )
-
                 if hf.status_code == 200:
                     cap = hf.json()
-                    if isinstance(cap, list):
+                    if isinstance(cap, list) and len(cap) > 0:
                         caption = cap[0].get("generated_text", "")
-                    else:
-                        caption = str(cap)
                     break
-            except Exception as e:
-                print("HF retry error:", e)
+            except:
+                pass
 
-        print("Caption:", caption)
+        if not caption:
+            caption = "An image with unclear details"
 
-        # ---- GROQ CALL (SAFE) ----
+        prompt = f"""
+You are analyzing an image.
+
+Image description: {caption}
+
+User question: {question}
+
+Give a clear helpful answer.
+"""
+
         g = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
             json={
-                "model": "llama-3.1-8b-instant",  # faster & safer
-                "messages": [{"role": "user", "content": f"{caption}. {question}"}]
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}]
             },
             timeout=10
         )
@@ -329,32 +334,14 @@ def vision():
         data = g.json()
 
         if "choices" not in data:
-            return jsonify({"reply": "Groq Error: " + str(data)})
+            return jsonify({"reply": str(data)})
 
         reply = data["choices"][0]["message"]["content"]
 
         return jsonify({"reply": reply})
 
     except Exception as e:
-        return jsonify({"reply": "Server Error: " + str(e)})
-        cap=hf.json()
-        caption=cap[0]["generated_text"] if isinstance(cap,list) else str(cap)
-
-        prompt=f"{caption}. Question: {q}"
-
-        g=requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}]}
-        )
-
-        data=g.json()
-        reply=data["choices"][0]["message"]["content"] if "choices" in data else str(data)
-
-        return jsonify({"reply":reply})
-
-    except Exception as e:
-        return jsonify({"reply":"Error: "+str(e)})
+        return jsonify({"reply": "Error: " + str(e)})
 
 @app.route("/new_chat")
 def new_chat():
