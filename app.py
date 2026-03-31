@@ -288,15 +288,55 @@ def chat():
 @app.route("/vision", methods=["POST"])
 def vision():
     try:
-        img=base64.b64decode(request.json["image"])
-        q=request.json.get("question","Describe image")
+        img = base64.b64decode(request.json["image"])
+        question = request.json.get("question", "Describe image")
 
-        hf=requests.post(
-            "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
-            headers={"Authorization": f"Bearer {HF_API_KEY}"},
-            data=img
+        # ---- HF CALL WITH TIMEOUT + RETRY ----
+        caption = "Unable to read image"
+
+        for _ in range(2):  # retry 2 times
+            try:
+                hf = requests.post(
+                    "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
+                    headers={"Authorization": f"Bearer {HF_API_KEY}"},
+                    data=img,
+                    timeout=10
+                )
+
+                if hf.status_code == 200:
+                    cap = hf.json()
+                    if isinstance(cap, list):
+                        caption = cap[0].get("generated_text", "")
+                    else:
+                        caption = str(cap)
+                    break
+            except Exception as e:
+                print("HF retry error:", e)
+
+        print("Caption:", caption)
+
+        # ---- GROQ CALL (SAFE) ----
+        g = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            json={
+                "model": "llama-3.1-8b-instant",  # faster & safer
+                "messages": [{"role": "user", "content": f"{caption}. {question}"}]
+            },
+            timeout=10
         )
 
+        data = g.json()
+
+        if "choices" not in data:
+            return jsonify({"reply": "Groq Error: " + str(data)})
+
+        reply = data["choices"][0]["message"]["content"]
+
+        return jsonify({"reply": reply})
+
+    except Exception as e:
+        return jsonify({"reply": "Server Error: " + str(e)})
         cap=hf.json()
         caption=cap[0]["generated_text"] if isinstance(cap,list) else str(cap)
 
