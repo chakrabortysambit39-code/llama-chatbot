@@ -7,7 +7,7 @@ app.secret_key = "secret123"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
 
-# ---------------- DB ----------------
+# ---------------- DATABASE ----------------
 def init_db():
     conn = sqlite3.connect("chat.db")
     c = conn.cursor()
@@ -27,14 +27,14 @@ LOGIN_HTML = """
 <html>
 <head>
 <style>
-body {background:#0f172a; color:white; text-align:center; font-family:sans-serif;}
-input {padding:10px; margin:10px; width:200px;}
-button {padding:10px; background:#22c55e; border:none;}
+body {background:#0f172a;color:white;text-align:center;font-family:sans-serif;}
+input {padding:10px;margin:10px;width:200px;}
+button {padding:10px;background:#22c55e;border:none;}
 </style>
 </head>
 <body>
 
-<h2>🔐 Login / Signup</h2>
+<h2>🔐 Login</h2>
 
 <input id="user" placeholder="Username"><br>
 <input id="pass" type="password" placeholder="Password"><br>
@@ -47,10 +47,7 @@ async function login(){
     let res = await fetch("/login", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            username:user.value,
-            password:pass.value
-        })
+        body:JSON.stringify({username:user.value,password:pass.value})
     });
 
     let t = await res.text();
@@ -62,12 +59,9 @@ async function signup(){
     await fetch("/signup", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            username:user.value,
-            password:pass.value
-        })
+        body:JSON.stringify({username:user.value,password:pass.value})
     });
-    alert("Signup success. Now login.");
+    alert("Signup done. Now login.");
 }
 </script>
 
@@ -81,13 +75,16 @@ HTML = """
 <html>
 <head>
 <style>
-body {margin:0; display:flex; font-family:sans-serif; background:#0f172a; color:white;}
-.sidebar {width:250px; background:#020617; padding:10px;}
-.chatbox {flex:1; display:flex; flex-direction:column;}
-.messages {flex:1; padding:10px; overflow:auto;}
-input {padding:10px; margin:5px;}
-button {padding:10px; background:#22c55e; border:none; margin:5px;}
-video {margin:10px;}
+body {margin:0;display:flex;font-family:sans-serif;background:#0f172a;color:white;}
+.sidebar {width:260px;background:#020617;padding:10px;}
+.chatbox {flex:1;display:flex;flex-direction:column;}
+.messages {flex:1;padding:10px;overflow:auto;}
+.inputbox {display:flex;padding:10px;}
+input {flex:1;padding:10px;border-radius:8px;border:none;}
+button {padding:10px;margin-left:5px;border:none;border-radius:8px;background:#22c55e;color:white;cursor:pointer;}
+video {margin:10px;border-radius:10px;}
+.chat-item {cursor:pointer;padding:5px;border-bottom:1px solid #333;}
+.chat-item:hover {background:#111;}
 </style>
 </head>
 
@@ -103,14 +100,14 @@ video {margin:10px;}
 
 <div class="messages" id="messages"></div>
 
-<div>
+<div class="inputbox">
 <input id="msg" placeholder="Type message">
 <button onclick="send()">Send</button>
 <button onclick="startVoice()">🎤</button>
 </div>
 
 <!-- CAMERA -->
-<video id="camera" width="300" autoplay></video><br>
+<video id="camera" width="320" autoplay playsinline></video><br>
 <button onclick="startCamera()">Start Camera</button>
 <button onclick="capture()">Capture</button>
 
@@ -121,7 +118,7 @@ video {margin:10px;}
 <script>
 let currentChat = null;
 
-// 🎤 Voice input
+// -------- VOICE --------
 function startVoice(){
     let r = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     r.start();
@@ -131,18 +128,18 @@ function startVoice(){
     }
 }
 
-// 🔊 Speak
 function speak(t){
     let s = new SpeechSynthesisUtterance(t);
     speechSynthesis.speak(s);
 }
 
-// Load chats
+// -------- CHAT --------
 function loadChats(){
     fetch("/get_chats").then(r=>r.json()).then(data=>{
         history.innerHTML="";
         data.forEach(c=>{
             let d=document.createElement("div");
+            d.className="chat-item";
             d.innerText="Chat "+c.id;
             d.onclick=()=>loadMessages(c.id);
             history.appendChild(d);
@@ -150,8 +147,9 @@ function loadChats(){
     });
 }
 
-function newChat(){
-    fetch("/new_chat").then(()=>loadChats());
+async function newChat(){
+    await fetch("/new_chat");
+    loadChats();
 }
 
 function loadMessages(id){
@@ -164,69 +162,64 @@ function loadMessages(id){
     });
 }
 
-// Send message
+// FIXED SEND
 async function send(){
+    let text = msg.value.trim();
+    if(!text) return;
+
     if(!currentChat){
-        await fetch("/new_chat");
+        await newChat();
         let chats = await fetch("/get_chats").then(r=>r.json());
-        currentChat = chats[chats.length - 1].id;}
+        currentChat = chats[chats.length-1].id;
+    }
+
+    messages.innerHTML += `<p><b>user:</b> ${text}</p>`;
+    msg.value="";
+
     let res = await fetch("/chat", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            message:msg.value,
-            chat_id:currentChat
-        })
+        body:JSON.stringify({message:text,chat_id:currentChat})
     });
 
     let data = await res.json();
-    loadMessages(currentChat);
+
+    messages.innerHTML += `<p><b>assistant:</b> ${data.reply}</p>`;
     speak(data.reply);
 }
 
-// Logout
-function logout(){
-    fetch("/logout").then(()=>location.reload());
-}
-
-// Camera
-let stream;
+// -------- CAMERA --------
 function startCamera(){
-    navigator.mediaDevices.getUserMedia({video:true}).then(s=>{
-        stream=s;
-        camera.srcObject=s;
-        camera.setAttribute("playsinline", true);
-    });
+    const video = document.getElementById("camera");
+
+    navigator.mediaDevices.getUserMedia({video:true})
+    .then(stream=>{
+        video.srcObject = stream;
+        video.onloadedmetadata = ()=>video.play();
+    })
+    .catch(err=>alert(err));
 }
 
 function capture(){
     const video = document.getElementById("camera");
 
-    if (!video.srcObject) {
-        alert("❌ Start camera first");
+    if(!video.srcObject){
+        alert("Start camera first");
         return;
     }
 
-    // wait until video is ready
-    if (video.readyState !== 4) {
-        alert("⏳ Camera still loading, try again");
+    if(video.readyState !== 4){
+        alert("Camera not ready");
         return;
     }
 
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const canvas=document.createElement("canvas");
+    canvas.width=video.videoWidth;
+    canvas.height=video.videoHeight;
 
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.getContext("2d").drawImage(video,0,0);
 
-    const base64 = canvas.toDataURL("image/jpeg");
-
-    console.log("✅ Image captured");
-
-    sendImage(base64.split(",")[1]);
-}
-    let base64=c.toDataURL("image/jpeg").split(",")[1];
+    const base64=canvas.toDataURL("image/jpeg").split(",")[1];
     sendImage(base64);
 }
 
@@ -241,8 +234,13 @@ async function sendImage(img){
     });
 
     let d = await res.json();
-    messages.innerHTML += "<p>📷 "+d.reply+"</p>";
+    messages.innerHTML += "<p><b>vision:</b> "+d.reply+"</p>";
     speak(d.reply);
+}
+
+// -------- LOGOUT --------
+function logout(){
+    fetch("/logout").then(()=>location.reload());
 }
 
 loadChats();
@@ -255,9 +253,9 @@ loadChats();
 # ---------------- AUTH ----------------
 @app.route("/signup", methods=["POST"])
 def signup():
-    d = request.json
-    conn = sqlite3.connect("chat.db")
-    c = conn.cursor()
+    d=request.json
+    conn=sqlite3.connect("chat.db")
+    c=conn.cursor()
     c.execute("INSERT INTO users (username,password) VALUES (?,?)",(d["username"],d["password"]))
     conn.commit()
     conn.close()
@@ -265,11 +263,11 @@ def signup():
 
 @app.route("/login", methods=["POST"])
 def login():
-    d = request.json
-    conn = sqlite3.connect("chat.db")
-    c = conn.cursor()
+    d=request.json
+    conn=sqlite3.connect("chat.db")
+    c=conn.cursor()
     c.execute("SELECT id FROM users WHERE username=? AND password=?",(d["username"],d["password"]))
-    u = c.fetchone()
+    u=c.fetchone()
     conn.close()
     if u:
         session["user_id"]=u[0]
@@ -284,23 +282,23 @@ def logout():
 # ---------------- CHAT ----------------
 @app.route("/chat", methods=["POST"])
 def chat():
-    d = request.json
-    chat_id = d["chat_id"]
-    msg = d["message"]
+    d=request.json
+    chat_id=d["chat_id"]
+    msg=d["message"]
 
-    conn = sqlite3.connect("chat.db")
-    c = conn.cursor()
+    conn=sqlite3.connect("chat.db")
+    c=conn.cursor()
 
     c.execute("INSERT INTO messages VALUES (NULL,?,?,?)",(chat_id,"user",msg))
 
-    r = requests.post(
+    r=requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
         json={"model":"llama-3.1-8b-instant","messages":[{"role":"user","content":msg}]}
     )
 
-    data = r.json()
-    reply = data["choices"][0]["message"]["content"] if "choices" in data else str(data)
+    data=r.json()
+    reply=data["choices"][0]["message"]["content"] if "choices" in data else str(data)
 
     c.execute("INSERT INTO messages VALUES (NULL,?,?,?)",(chat_id,"assistant",reply))
 
@@ -312,39 +310,37 @@ def chat():
 # ---------------- VISION ----------------
 @app.route("/vision", methods=["POST"])
 def vision():
-    image = request.json["image"]
-    question = request.json.get("question","Describe this image")
+    img_bytes=base64.b64decode(request.json["image"])
+    question=request.json.get("question","Describe image")
 
-    img_bytes = base64.b64decode(image)
-
-    hf = requests.post(
+    hf=requests.post(
         "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
         headers={"Authorization": f"Bearer {HF_API_KEY}"},
         data=img_bytes
     )
 
-    cap = hf.json()
-    caption = cap[0]["generated_text"] if isinstance(cap,list) else str(cap)
+    cap=hf.json()
+    caption=cap[0]["generated_text"] if isinstance(cap,list) else str(cap)
 
-    prompt = f"Image: {caption}. Question: {question}"
+    prompt=f"{caption}. Question: {question}"
 
-    g = requests.post(
+    g=requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-        json={"model":"llama-3.1-8b-instant","messages":[{"role":"user","content":prompt}]}
+        json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}]}
     )
 
-    data = g.json()
-    reply = data["choices"][0]["message"]["content"] if "choices" in data else str(data)
+    data=g.json()
+    reply=data["choices"][0]["message"]["content"] if "choices" in data else str(data)
 
     return jsonify({"reply":reply})
 
 # ---------------- HISTORY ----------------
 @app.route("/new_chat")
 def new_chat():
-    uid = session.get("user_id")
-    conn = sqlite3.connect("chat.db")
-    c = conn.cursor()
+    uid=session.get("user_id")
+    conn=sqlite3.connect("chat.db")
+    c=conn.cursor()
     c.execute("INSERT INTO chats (user_id) VALUES (?)",(uid,))
     conn.commit()
     conn.close()
@@ -352,20 +348,20 @@ def new_chat():
 
 @app.route("/get_chats")
 def get_chats():
-    uid = session.get("user_id")
-    conn = sqlite3.connect("chat.db")
-    c = conn.cursor()
+    uid=session.get("user_id")
+    conn=sqlite3.connect("chat.db")
+    c=conn.cursor()
     c.execute("SELECT id FROM chats WHERE user_id=?",(uid,))
-    chats = [{"id":r[0]} for r in c.fetchall()]
+    chats=[{"id":r[0]} for r in c.fetchall()]
     conn.close()
     return jsonify(chats)
 
 @app.route("/get_messages/<chat_id>")
 def get_messages(chat_id):
-    conn = sqlite3.connect("chat.db")
-    c = conn.cursor()
+    conn=sqlite3.connect("chat.db")
+    c=conn.cursor()
     c.execute("SELECT role,content FROM messages WHERE chat_id=?",(chat_id,))
-    msgs = [{"role":r,"content":c} for r,c in c.fetchall()]
+    msgs=[{"role":r,"content":c} for r,c in c.fetchall()]
     conn.close()
     return jsonify(msgs)
 
