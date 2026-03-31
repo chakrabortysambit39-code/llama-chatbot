@@ -166,10 +166,17 @@ function loadMessages(id){
 
 // Send message
 async function send(){
+    if(!currentChat){
+        await fetch("/new_chat");
+        let chats = await fetch("/get_chats").then(r=>r.json());
+        currentChat = chats[chats.length - 1].id;}
     let res = await fetch("/chat", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:msg.value, chat_id:currentChat})
+        body:JSON.stringify({
+            message:msg.value,
+            chat_id:currentChat
+        })
     });
 
     let data = await res.json();
