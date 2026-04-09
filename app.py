@@ -1,11 +1,14 @@
 from flask import Flask, request, jsonify, render_template_string, session, redirect
 import requests, os, sqlite3, base64
+from openai import OpenAI
 
 app = Flask(__name__)
 app.secret_key = "secret123"
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-HF_API_KEY = os.getenv("HF_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ---------------- DB ----------------
 def init_db():
@@ -24,7 +27,6 @@ LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
 <body style="background:#0f172a;color:white;text-align:center;font-family:sans-serif;">
-
 <h2>Login</h2>
 
 <input id="user" placeholder="Username"><br>
@@ -53,7 +55,6 @@ async function signup(){
     alert("Signup done");
 }
 </script>
-
 </body>
 </html>
 """
@@ -202,7 +203,6 @@ async function sendImage(img){
         });
 
         let data = await res.json();
-
         messages.innerHTML+=`<p><b>Vision:</b> ${data.reply}</p>`;
 
     }catch(e){
@@ -257,6 +257,7 @@ def logout():
     session.clear()
     return redirect("/")
 
+# ---------------- CHAT ----------------
 @app.route("/chat", methods=["POST"])
 def chat():
     d=request.json
@@ -283,66 +284,39 @@ def chat():
 
     return jsonify({"reply":reply})
 
+# ---------------- REAL VISION ----------------
 @app.route("/vision", methods=["POST"])
 def vision():
     try:
-        img = base64.b64decode(request.json["image"])
+        image_base64 = request.json["image"]
         question = request.json.get("question", "Describe image")
 
-        caption = ""
-
-        # HF with retry
-        for _ in range(2):
-            try:
-                hf = requests.post(
-                    "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
-                    headers={"Authorization": f"Bearer {HF_API_KEY}"},
-                    data=img,
-                    timeout=10
-                )
-                if hf.status_code == 200:
-                    cap = hf.json()
-                    if isinstance(cap, list) and len(cap) > 0:
-                        caption = cap[0].get("generated_text", "")
-                    break
-            except:
-                pass
-
-        if not caption:
-            caption = "An image with unclear details"
-
-        prompt = f"""
-You are analyzing an image.
-
-Image description: {caption}
-
-User question: {question}
-
-Give a clear helpful answer.
-"""
-
-        g = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=10
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": question},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            }
+                        }
+                    ]
+                }
+            ]
         )
 
-        data = g.json()
-
-        if "choices" not in data:
-            return jsonify({"reply": str(data)})
-
-        reply = data["choices"][0]["message"]["content"]
+        reply = response.choices[0].message.content
 
         return jsonify({"reply": reply})
 
     except Exception as e:
         return jsonify({"reply": "Error: " + str(e)})
 
+# ---------------- HISTORY ----------------
 @app.route("/new_chat")
 def new_chat():
     uid=session.get("user_id")
