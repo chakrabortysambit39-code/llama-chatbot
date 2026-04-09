@@ -1,14 +1,10 @@
 from flask import Flask, request, jsonify, render_template_string, session, redirect
-import requests, os, sqlite3, base64
-from openai import OpenAI
+import requests, os, sqlite3
 
 app = Flask(__name__)
 app.secret_key = "secret123"
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ---------------- DB ----------------
 def init_db():
@@ -284,32 +280,44 @@ def chat():
 
     return jsonify({"reply":reply})
 
-# ---------------- REAL VISION ----------------
+# ---------------- REAL VISION (FREE) ----------------
 @app.route("/vision", methods=["POST"])
 def vision():
     try:
         image_base64 = request.json["image"]
         question = request.json.get("question", "Describe image")
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": question},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_base64}"
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": question},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_base64}"
+                                }
                             }
-                        }
-                    ]
-                }
-            ]
+                        ]
+                    }
+                ]
+            }
         )
 
-        reply = response.choices[0].message.content
+        data = response.json()
+
+        if "choices" not in data:
+            return jsonify({"reply": str(data)})
+
+        reply = data["choices"][0]["message"]["content"]
 
         return jsonify({"reply": reply})
 
